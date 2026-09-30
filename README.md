@@ -1,6 +1,8 @@
 # GoldPos Admin
 
-پنل مدیریت اشتراک، لایسنس و دستگاه‌های GoldPos — ساخته‌شده با Astro، shadcn/ui و Cloudflare D1.
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/itsforpandash/goldpos-admin)
+
+پنل مدیریت اشتراک، لایسنس و دستگاههای GoldPos — ساختهشده با Astro، shadcn/ui و Cloudflare D1.
 
 ## ویژگی‌ها
 
