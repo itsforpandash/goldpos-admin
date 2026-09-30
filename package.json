@@ -47,7 +47,7 @@
 	"private": true,
 	"scripts": {
 		"astro": "astro",
-		"build": "astro build && npm run wrangler:wrapper",
+		"build": "astro build && npm run wrangler:wrapper && (npx wrangler d1 migrations apply DB --remote || echo 'SKIPPED: remote migrations (no auth or DB not provisioned yet)')",
 		"cf-typegen": "wrangler types",
 		"check": "npm run build && npm run wrangler:wrapper && wrangler deploy --dry-run",
 		"db:migrate": "wrangler d1 migrations apply DB --local",

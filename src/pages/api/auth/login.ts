@@ -2,9 +2,10 @@ import { hashPassword, verifyPassword, createSessionToken, verifySessionToken, p
 import { AdminUserService } from "@/lib/services/admin";
 import { loginLimiter } from "@/lib/security";
 import { ActivityService } from "@/lib/services/activity";
+import { getEnvSecret } from "@/lib/session-helpers";
 
 export async function POST({ locals, request }) {
-  const { DB, API_TOKEN } = locals.runtime.env;
+  const { DB } = locals.runtime.env;
 
   try {
     const { username, password } = await request.json();
@@ -34,8 +35,9 @@ export async function POST({ locals, request }) {
       return Response.json({ message: "نام کاربری یا رمز عبور اشتباه است", success: false }, { status: 401 });
     }
 
-    // Create session
-    const tokenInfo = await createSessionToken(admin.id, API_TOKEN || "goldpos-secret");
+    // Create session — MUST use the same secret resolution as the middleware
+    // (getEnvSecret), otherwise signing and verification use different keys.
+    const tokenInfo = await createSessionToken(admin.id, getEnvSecret(locals.runtime.env));
 
     await activityService.log({
       actorId: admin.id,
