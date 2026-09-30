@@ -1,0 +1,99 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import Flash from '@/components/admin/flash.astro';
+import { PlanService } from '@/lib/services/plan';
+import { toPersianDigits } from '@/lib/i18n';
+
+const { DB } = Astro.locals.runtime.env;
+const planService = new PlanService(DB);
+const plans = await planService.getAll();
+
+const ok = Astro.url.searchParams.get('ok');
+const err = Astro.url.searchParams.get('err');
+---
+
+<Layout title="پلنها">
+  <Flash ok={ok} err={err} />
+
+  <details class="kpi-card mb-6" open={!!err}>
+    <summary class="cursor-pointer font-bold text-lg select-none">+ افزودن پلن جدید</summary>
+    <form method="post" action="/admin/plans/create" class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div>
+        <label class="block text-xs text-muted-foreground mb-1">نام پلن *</label>
+        <input type="text" name="name" required minlength="2" placeholder="Gold Plus" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+      </div>
+      <div>
+        <label class="block text-xs text-muted-foreground mb-1">قیمت (تومان)</label>
+        <input type="number" name="price" value="0" min="0" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+      </div>
+      <div>
+        <label class="block text-xs text-muted-foreground mb-1">مدت (روز)</label>
+        <input type="number" name="duration_days" value="30" min="1" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+      </div>
+      <div>
+        <label class="block text-xs text-muted-foreground mb-1">حداکثر دستگاه</label>
+        <input type="number" name="max_devices" value="1" min="1" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+      </div>
+      <div>
+        <label class="block text-xs text-muted-foreground mb-1">توضیح</label>
+        <input type="text" name="description" placeholder="توضیح کوتاه" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" />
+      </div>
+      <div class="sm:col-span-2 lg:col-span-5">
+        <button type="submit" class="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+          ایجاد پلن
+        </button>
+      </div>
+    </form>
+  </details>
+
+  <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    {plans.length === 0 ? (
+      <div class="kpi-card text-center text-muted-foreground md:col-span-2 lg:col-span-3">
+        پلنی ثبت نشده. از فرم بالا اولین پلن را ایجاد کنید.
+      </div>
+    ) : (
+      plans.map((plan: any) => (
+        <div class="kpi-card">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-lg">{plan.name}</h3>
+            <span class={`px-2 py-1 rounded-full text-xs ${
+              plan.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
+            }`}>
+              {plan.status === 'active' ? 'فعال' : 'غیرفعال'}
+            </span>
+          </div>
+          <p class="text-2xl font-bold mb-2">
+            {plan.price > 0 ? `${toPersianDigits(plan.price.toLocaleString())} تومان` : "رایگان"}
+          </p>
+          <p class="text-sm text-muted-foreground mb-4">{plan.description || ""}</p>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-muted-foreground">مدت:</span>
+              <span>{toPersianDigits(plan.duration_days)} روز</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-muted-foreground">حداکثر دستگاه:</span>
+              <span>{toPersianDigits(plan.max_devices)}</span>
+            </div>
+          </div>
+          <div class="mt-4 pt-4 border-t border-border flex items-center gap-2">
+            <form method="post" action="/admin/plans/action" class="inline">
+              <input type="hidden" name="id" value={plan.id} />
+              <input type="hidden" name="action" value="toggle" />
+              <button type="submit" class="rounded border border-border px-2 py-1 text-xs hover:bg-muted transition-colors">
+                {plan.status === 'active' ? 'غیرفعال‌سازی' : 'فعال‌سازی'}
+              </button>
+            </form>
+            <form method="post" action="/admin/plans/action" class="inline" onsubmit="return confirm('این پلن حذف شود؟ (در صورت داشتن لایسنس، حذف ناموفق می‌شود)')">
+              <input type="hidden" name="id" value={plan.id} />
+              <input type="hidden" name="action" value="delete" />
+              <button type="submit" class="rounded border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950 transition-colors">
+                حذف
+              </button>
+            </form>
+          </div>
+        </div>
+      ))
+    )}
+  </div>
+</Layout>

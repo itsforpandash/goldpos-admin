@@ -1,0 +1,183 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { DashboardService } from '@/lib/services/dashboard';
+import { toPersianDigits, formatPersianDate } from '@/lib/i18n';
+
+const { DB } = Astro.locals.runtime.env;
+const dashboardService = new DashboardService(DB);
+
+const [kpis, charts, activity, alerts] = await Promise.all([
+  dashboardService.getKpis(),
+  dashboardService.getCharts(),
+  dashboardService.getRecentActivity(),
+  dashboardService.getAlerts(),
+]);
+
+const maxActivation = Math.max(...charts.activations.map((a) => a.count), 1);
+const maxUsers = Math.max(...charts.new_users.map((u) => u.count), 1);
+const maxPlan = Math.max(...charts.plan_distribution.map((p) => p.count), 1);
+
+const kpiCards = [
+  { label: 'کل کاربران', value: kpis.total_users, color: '#0ea5e9' },
+  { label: 'کاربران فعال', value: kpis.active_users, color: '#22c55e' },
+  { label: 'لایسنسهای فعال', value: kpis.active_licenses, color: '#8b5cf6' },
+  { label: 'دستگاههای فعال', value: kpis.active_devices, color: '#f59e0b' },
+  { label: 'لایسنسهای منقضی', value: kpis.expired_licenses, color: '#ef4444' },
+  { label: 'انقضای نزدیک (۷ روز)', value: kpis.expiring_soon, color: '#f97316' },
+  { label: 'فعالسازی امروز', value: kpis.activations_today, color: '#06b6d4' },
+  { label: 'کاربران جدید امروز', value: kpis.users_today, color: '#a855f7' },
+];
+---
+
+<Layout title="داشبورد">
+  {/* Alerts */}
+  {alerts.length > 0 && (
+    <div class="space-y-2 mb-6">
+      {alerts.map((alert) => (
+        <div
+          class={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
+            alert.type === 'warning' ? 'bg-yellow-50 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200' :
+            alert.type === 'danger' ? 'bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-200' :
+            'bg-green-50 text-green-800 dark:bg-green-900/20 dark:text-green-200'
+          }`}
+        >
+          <span>{alert.type === 'success' ? '🟢' : alert.type === 'danger' ? '🔴' : '⚠️'}</span>
+          <span>{alert.message}</span>
+        </div>
+      ))}
+    </div>
+  )}
+
+  {/* KPI Cards */}
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    {kpiCards.map((card) => (
+      <div class="kpi-card">
+        <div class="flex items-center justify-between">
+          <div class="space-y-1">
+            <p class="text-sm text-muted-foreground">{card.label}</p>
+            <p class="kpi-value">{toPersianDigits(card.value)}</p>
+          </div>
+          <div class="w-10 h-10 rounded-lg" style={`background: ${card.color}1a`}></div>
+        </div>
+      </div>
+    ))}
+  </div>
+
+  {/* Charts */}
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    {/* Activation Trend */}
+    <div class="kpi-card">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-medium">روند فعالسازی (۱۴ روز اخیر)</h3>
+        <span class="text-xs text-muted-foreground">فعالسازی روزانه</span>
+      </div>
+      <div class="flex items-end gap-1 h-32">
+        {charts.activations.map((d) => (
+          <div
+            class="flex-1 bg-primary/80 rounded-t transition-all hover:opacity-80"
+            style={`height: ${(d.count / maxActivation) * 100}%; min-height: ${d.count > 0 ? '4px' : '2px'}`}
+            title={`${d.day}: ${d.count}`}
+          ></div>
+        ))}
+      </div>
+      <div class="flex justify-between mt-2 text-[10px] text-muted-foreground">
+        <span>{formatPersianDate(charts.activations[0]?.day)}</span>
+        <span>{formatPersianDate(charts.activations[charts.activations.length - 1]?.day)}</span>
+      </div>
+    </div>
+
+    {/* New Users per Month */}
+    <div class="kpi-card">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-medium">کاربران جدید ماهانه (۶ ماه اخیر)</h3>
+      </div>
+      <div class="flex items-end gap-2 h-32">
+        {charts.new_users.map((d) => (
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-green-500/80 rounded-t transition-all hover:opacity-80"
+                 style={`height: ${(d.count / maxUsers) * 100}%; min-height: ${d.count > 0 ? '4px' : '2px'}`}
+                 title={`${d.month}: ${d.count}`}></div>
+            <span class="text-[9px] text-muted-foreground">{d.month.slice(5)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+
+  {/* Plan Distribution + Recent Activity */}
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    {/* Plan Distribution */}
+    <div class="kpi-card">
+      <h3 class="text-sm font-medium mb-4">توزیع پلنها</h3>
+      <div class="space-y-3">
+        {charts.plan_distribution.map((plan) => (
+          <div class="flex items-center gap-3">
+            <span class="text-sm w-24 shrink-0">{plan.name}</span>
+            <div class="flex-1 h-3 bg-muted rounded-full overflow-hidden">
+              <div
+                class="h-full rounded-full bg-primary transition-all"
+                style={`width: ${(plan.count / maxPlan) * 100}%`}
+              ></div>
+            </div>
+            <span class="text-sm text-muted-foreground w-10 text-left">{toPersianDigits(plan.count)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* Recent License Events */}
+    <div class="kpi-card">
+      <h3 class="text-sm font-medium mb-4">فعالیتهای اخیر لایسنس</h3>
+      {activity.license_events.length === 0 ? (
+        <p class="text-sm text-muted-foreground">فعالیتی ثبت نشده است</p>
+      ) : (
+        <div class="space-y-2">
+          {activity.license_events.slice(0, 6).map((event: any) => (
+            <div class="flex items-center justify-between py-2 border-b border-border last:border-0">
+              <div class="flex items-center gap-2">
+                <span class={`inline-block w-2 h-2 rounded-full ${
+                  event.event_type === 'revoked' ? 'bg-red-500' :
+                  event.event_type === 'expired' ? 'bg-orange-500' :
+                  event.event_type === 'activated' ? 'bg-green-500' :
+                  'bg-blue-500'
+                }`}></span>
+                <span class="text-sm font-mono text-xs">{event.code}</span>
+                <span class="text-xs text-muted-foreground">{event.details}</span>
+              </div>
+              <span class="text-[10px] text-muted-foreground">{formatPersianDate(event.created_at)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+
+  {/* Recent Devices */}
+  {activity.devices.length > 0 && (
+    <div class="kpi-card">
+      <h3 class="text-sm font-medium mb-4">دستگاههای اخیراً متصل</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-right text-muted-foreground border-b border-border">
+              <th class="py-2 font-medium">دستگاه</th>
+              <th class="py-2 font-medium">کاربر</th>
+              <th class="py-2 font-medium">لایسنس</th>
+              <th class="py-2 font-medium">آخرین اتصال</th>
+            </tr>
+          </thead>
+          <tbody>
+            {activity.devices.slice(0, 5).map((device: any) => (
+              <tr class="border-b border-border last:border-0">
+                <td class="py-2 font-mono text-xs">{device.device_model || device.device_hash.slice(0, 12)}</td>
+                <td class="py-2">{device.user_name}</td>
+                <td class="py-2 font-mono text-xs">{device.license_code}</td>
+                <td class="py-2 text-muted-foreground text-xs">{formatPersianDate(device.last_connected_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )}
+</Layout>

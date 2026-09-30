@@ -1,0 +1,70 @@
+---
+import '@/styles/globals.css'
+---
+
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="generator" content={Astro.generator} />
+    <title>GoldPos Admin — پنل مدیریت</title>
+    <meta name="description" content="GoldPos - مدیریت اشتراک، لایسنس و دستگاه‌ها" />
+    <script is:inline>
+      const t = () => (localStorage && localStorage.getItem('theme')) || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.classList[t() === 'dark' ? 'add' : 'remove']('dark');
+    </script>
+  </head>
+  <body class="min-h-screen bg-gradient-to-br from-slate-50 to-sky-50 dark:from-slate-900 dark:to-slate-800">
+    <div class="min-h-screen flex flex-col items-center justify-center p-8 text-center">
+      <div class="space-y-6 max-w-lg">
+        <div class="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-400 flex items-center justify-center shadow-lg">
+          <span class="text-white text-4xl font-bold">G</span>
+        </div>
+
+        <h1 class="text-4xl font-bold text-slate-800 dark:text-white">
+          GoldPos Admin
+        </h1>
+
+        <p class="text-lg text-slate-600 dark:text-slate-300">
+          پنل مدیریت اشتراک، لایسنس و دستگاه‌ها
+        </p>
+
+        <div class="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+          <a href="/admin/login"
+             class="inline-flex items-center justify-center gap-2 px-8 py-3 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium transition-colors shadow-md">
+            ورود به پنل مدیریت
+          </a>
+          <a href="#features"
+             class="inline-flex items-center justify-center gap-2 px-8 py-3 border-2 border-slate-300 dark:border-slate-600 hover:border-sky-500 text-slate-700 dark:text-slate-200 rounded-lg font-medium transition-colors">
+            قابلیت‌ها
+          </a>
+        </div>
+
+        <div id="features" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-12 text-right">
+          <div class="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <div class="text-2xl mb-2">💳</div>
+            <h3 class="font-semibold text-slate-800 dark:text-white mb-1">مدیریت پلن‌ها</h3>
+            <p class="text-sm text-slate-600 dark:text-slate-400">Free تا Enterprise با تنظیم تعداد دستگاه و مدت</p>
+          </div>
+          <div class="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <div class="text-2xl mb-2">🔑</div>
+            <h3 class="font-semibold text-slate-800 dark:text-white mb-1">لایسنس‌ها</h3>
+            <p class="text-sm text-slate-600 dark:text-slate-400">تولید، فعال‌سازی، تمدید و لغو لایسنس</p>
+          </div>
+          <div class="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <div class="text-2xl mb-2">📱</div>
+            <h3 class="font-semibold text-slate-800 dark:text-white mb-1">دستگاه‌ها</h3>
+            <p class="text-sm text-slate-600 dark:text-slate-400">کنترل فعال‌سازی و ریست دستگاه‌های کاربران</p>
+          </div>
+        </div>
+
+        <p class="text-sm text-slate-500 dark:text-slate-400 pt-8">
+          ساخته‌شده با Astro + shadcn/ui + Cloudflare Workers و D1
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

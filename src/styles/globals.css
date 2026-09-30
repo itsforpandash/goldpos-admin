@@ -1,0 +1,89 @@
+@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Regular.woff2') format('woff2');
+@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Bold.woff2') format('woff2');
+@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Medium.woff2') format('woff2');
+@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Light.woff2') format('woff2');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 220 20% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 10%;
+    --primary: 205 60% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 15% 92%;
+    --secondary-foreground: 220 20% 10%;
+    --muted: 220 15% 92%;
+    --muted-foreground: 220 10% 50%;
+    --accent: 220 15% 92%;
+    --accent-foreground: 220 20% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 88%;
+    --input: 220 15% 88%;
+    --ring: 205 60% 45%;
+    --chart-1: 205 60% 45%;
+    --chart-2: 142 60% 40%;
+    --chart-3: 45 80% 50%;
+    --chart-4: 280 50% 55%;
+    --chart-5: 0 75% 55%;
+    --radius: 0.5rem;
+  }
+  .dark {
+    --background: 220 20% 8%;
+    --foreground: 220 20% 95%;
+    --card: 220 20% 10%;
+    --card-foreground: 220 20% 95%;
+    --popover: 220 20% 10%;
+    --popover-foreground: 220 20% 95%;
+    --primary: 205 60% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 15% 18%;
+    --secondary-foreground: 220 20% 95%;
+    --muted: 220 15% 18%;
+    --muted-foreground: 220 10% 60%;
+    --accent: 220 15% 18%;
+    --accent-foreground: 220 20% 95%;
+    --destructive: 0 62.8% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 18%;
+    --input: 220 15% 18%;
+    --ring: 205 60% 50%;
+    --chart-1: 205 60% 50%;
+    --chart-2: 142 60% 45%;
+    --chart-3: 45 80% 55%;
+    --chart-4: 280 50% 60%;
+    --chart-5: 0 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    font-family: 'Vazirmatn', system-ui, sans-serif;
+  }
+  html {
+    direction: rtl;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .kpi-card {
+    @apply bg-card rounded-xl border border-border p-6 shadow-sm;
+  }
+  .kpi-value {
+    @apply text-3xl font-bold tracking-tight;
+  }
+  .kpi-label {
+    @apply text-sm text-muted-foreground mt-1;
+  }
+}

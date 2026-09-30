@@ -1,0 +1,92 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import Flash from '@/components/admin/flash.astro';
+import { DeviceService } from '@/lib/services/device';
+import { toPersianDigits, formatPersianDate } from '@/lib/i18n';
+
+const { DB } = Astro.locals.runtime.env;
+const deviceService = new DeviceService(DB);
+const devices = await deviceService.getAll();
+
+const ok = Astro.url.searchParams.get('ok');
+const err = Astro.url.searchParams.get('err');
+---
+
+<Layout title="دستگاهها">
+  <Flash ok={ok} err={err} />
+
+  <div class="rounded-md border border-border overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-muted/50">
+        <tr class="text-right">
+          <th class="px-4 py-3 font-medium text-muted-foreground">شناسه دستگاه</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">کاربر</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">لایسنس</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">مدل</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">وضعیت</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">آخرین اتصال</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {devices.length === 0 ? (
+          <tr>
+            <td colspan="7" class="h-24 text-center text-muted-foreground">
+              دستگاهی یافت نشد.
+            </td>
+          </tr>
+        ) : (
+          devices.map((device: any) => (
+            <tr class="border-t border-border hover:bg-muted/30 transition-colors">
+              <td class="px-4 py-3 font-mono text-xs max-w-[120px] truncate" title={device.device_hash}>
+                {device.device_hash}
+              </td>
+              <td class="px-4 py-3">{device.user_name || "—"}</td>
+              <td class="px-4 py-3 font-mono text-xs">{device.license_code || "—"}</td>
+              <td class="px-4 py-3">{device.device_model || "—"}</td>
+              <td class="px-4 py-3">
+                <span class={`px-2 py-1 rounded-full text-xs ${
+                  device.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                  device.status === 'blocked' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                  'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
+                }`}>
+                  {device.status === 'active' ? 'فعال' : device.status === 'blocked' ? 'مسدود' : 'غیرفعال'}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-muted-foreground">{formatPersianDate(device.last_connected_at)}</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-2">
+                  {device.status === 'active' && (
+                    <form method="post" action="/admin/devices/action" class="inline">
+                      <input type="hidden" name="id" value={device.id} />
+                      <input type="hidden" name="action" value="deactivate" />
+                      <button type="submit" class="rounded border border-border px-2 py-1 text-xs hover:bg-muted transition-colors">
+                        غیرفعال‌سازی
+                      </button>
+                    </form>
+                  )}
+                  {device.status !== 'blocked' && (
+                    <form method="post" action="/admin/devices/action" class="inline" onsubmit="return confirm('این دستگاه مسدود شود؟')">
+                      <input type="hidden" name="id" value={device.id} />
+                      <input type="hidden" name="action" value="block" />
+                      <button type="submit" class="rounded border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950 transition-colors">
+                        مسدودسازی
+                      </button>
+                    </form>
+                  )}
+                  <form method="post" action="/admin/devices/action" class="inline" onsubmit="return confirm('اطلاعات این دستگاه ریست شود؟')">
+                    <input type="hidden" name="id" value={device.id} />
+                    <input type="hidden" name="action" value="reset" />
+                    <button type="submit" class="rounded border border-border px-2 py-1 text-xs hover:bg-muted transition-colors">
+                      ریست
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  </div>
+</Layout>

@@ -1,0 +1,57 @@
+---
+import { toPersianDigits } from '@/lib/i18n';
+
+const { ok, err } = Astro.props;
+
+const okMap: Record<string, string> = {
+  revoked: 'لایسنس لغو شد.',
+  extended: 'لایسنس تمدید شد.',
+  created: 'با موفقیت ایجاد شد.',
+  status: 'وضعیت تغییر کرد.',
+  deleted: 'با موفقیت حذف شد.',
+  deactivated: 'دستگاه غیرفعال شد.',
+  blocked: 'دستگاه مسدود شد.',
+  reset: 'اطلاعات دستگاه ریست شد.',
+};
+
+const errMap: Record<string, string> = {
+  fields: 'فیلدهای فرم را کامل و صحیح وارد کنید.',
+  generate: 'تولید لایسنس ناموفق بود.',
+  extend: 'تمدید لایسنس ناموفق بود.',
+  action: 'عملیات ناموفق بود.',
+  unknown_action: 'عملیات ناشناخته است.',
+  duplicate: 'رکورد تکراری است (نام یا نام کاربری قبلاً ثبت شده).',
+  create: 'ایجاد رکورد ناموفق بود.',
+  has_licenses: 'این کاربر لایسنس دارد؛ اول لایسنس‌هایش را لغو کنید.',
+  not_found: 'رکورد پیدا نشد.',
+};
+
+let message = '';
+let tone = '';
+
+if (ok) {
+  if (ok.startsWith('generated_')) {
+    const n = Number(ok.slice('generated_'.length)) || 0;
+    message = `${toPersianDigits(n)} لایسنس جدید تولید شد.`;
+  } else {
+    message = okMap[ok] || 'عملیات با موفقیت انجام شد.';
+  }
+  tone = 'success';
+} else if (err) {
+  message = errMap[err] || 'خطایی رخ داد.';
+  tone = 'error';
+}
+---
+
+{message && (
+  <div
+    class={`mb-4 rounded-md border px-4 py-3 text-sm ${
+      tone === 'success'
+        ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-300'
+        : 'border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300'
+    }`}
+    role="alert"
+  >
+    {message}
+  </div>
+)}

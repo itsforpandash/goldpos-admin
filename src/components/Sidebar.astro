@@ -1,0 +1,47 @@
+---
+const currentPath = Astro.url.pathname;
+---
+
+<div class="flex flex-col h-full">
+  {/* Logo */}
+  <div class="flex items-center gap-3 px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+    <div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white font-bold text-sm">G</div>
+    <div>
+      <div class="font-bold text-foreground text-sm">GoldPos</div>
+      <div class="text-xs text-muted-foreground">پنل مدیریت</div>
+    </div>
+  </div>
+
+  {/* Navigation */}
+  <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+    <a href="/admin" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {% if currentPath === '/admin' %}bg-primary/10 text-primary{% else %}text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800{% endif %}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+      داشبورد
+    </a>
+    <a href="/admin/users" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {% if currentPath.startsWith('/admin/users') %}bg-primary/10 text-primary{% else %}text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800{% endif %}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      کاربران
+    </a>
+    <a href="/admin/licenses" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {% if currentPath.startsWith('/admin/licenses') %}bg-primary/10 text-primary{% else %}text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800{% endif %}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+      لایسنسها
+    </a>
+    <a href="/admin/devices" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {% if currentPath.startsWith('/admin/devices') %}bg-primary/10 text-primary{% else %}text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800{% endif %}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="4" x="2" y="3" rx="1"/><path d="M4 7V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/><path d="M2 11h20"/><path d="M4 11v4a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2v-4"/><path d="M16 17v-4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v4"/><path d="M9 17h6"/></svg>
+      دستگاهها
+    </a>
+    <a href="/admin/plans" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {% if currentPath.startsWith('/admin/plans') %}bg-primary/10 text-primary{% else %}text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800{% endif %}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+      پلنها
+    </a>
+    <a href="/admin/activity" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {% if currentPath.startsWith('/admin/activity') %}bg-primary/10 text-primary{% else %}text-muted-foreground hover:bg-gray-100 dark:hover:bg-gray-800{% endif %}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+      فعالیت‌ها
+    </a>
+  </nav>
+
+  {/* Footer */}
+  <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-800 text-xs text-muted-foreground">
+    GoldPos Admin v1.0
+  </div>
+</div>

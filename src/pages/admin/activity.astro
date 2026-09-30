@@ -1,0 +1,60 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { ActivityService } from '@/lib/services/activity';
+import { toPersianDigits, formatPersianDate, formatPersianRelative } from '@/lib/i18n';
+
+const { DB } = Astro.locals.runtime.env;
+const activityService = new ActivityService(DB);
+const logs = await activityService.getLogs(undefined, undefined, 1, 50);
+---
+
+<Layout title="فعالیت‌ها">
+  <div class="rounded-md border border-border overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-muted/50">
+        <tr class="text-right">
+          <th class="px-4 py-3 font-medium text-muted-foreground">زمان</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">مجری</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">عملیات</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">هدف</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">نتیجه</th>
+        </tr>
+      </thead>
+      <tbody>
+        {logs.length === 0 ? (
+          <tr>
+            <td colspan="5" class="h-24 text-center text-muted-foreground">
+              فعالیتی ثبت نشده است.
+            </td>
+          </tr>
+        ) : (
+          logs.map((log: any) => (
+            <tr class="border-t border-border hover:bg-muted/30 transition-colors">
+              <td class="px-4 py-3 text-xs text-muted-foreground">
+                {formatPersianDate(log.created_at)}
+              </td>
+              <td class="px-4 py-3">{log.actor_name || log.actor_username || "سیستم"}</td>
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-primary/10 text-primary">
+                  {log.action}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-xs text-muted-foreground">
+                {log.target_type && log.target_id ? `${log.target_type}:${log.target_id}` : "—"}
+              </td>
+              <td class="px-4 py-3">
+                <span class={`px-2 py-1 rounded-full text-xs ${
+                  log.result === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                  log.result === 'fail' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                  'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
+                }`}>
+                  {log.result === 'success' ? 'موفق' : log.result === 'fail' ? 'ناموفق' : '—'}
+                </span>
+              </td>
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  </div>
+</Layout>
