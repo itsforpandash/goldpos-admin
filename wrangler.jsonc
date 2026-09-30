@@ -17,7 +17,7 @@
     {
       "binding": "DB",
       "database_name": "admin-db",
-      "database_id": "${DATABASE_ID}"
+      "database_id": "{DATABASE_ID}"
     }
   ]
 }
