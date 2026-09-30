@@ -47,7 +47,7 @@
 	"private": true,
 	"scripts": {
 		"astro": "astro",
-		"build": "astro build",
+		"build": "astro build && npm run wrangler:wrapper",
 		"cf-typegen": "wrangler types",
 		"check": "npm run build && npm run wrangler:wrapper && wrangler deploy --dry-run",
 		"db:migrate": "wrangler d1 migrations apply DB --local",
