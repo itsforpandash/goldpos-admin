@@ -168,14 +168,64 @@ const neutralBadge = 'rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700 d
         <input type="hidden" name="action" value="connect" />
         <button
           type="submit"
-          class="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
         >
-          اتصال / به‌روزرسانی وب‌هوک
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span>ثبت و اتصال خودکار وب‌هوک تلگرام (One-Click Setup)</span>
         </button>
       </form>
       <p class="mt-2 text-xs text-muted-foreground">
-        با این دکمه آدرس وب‌هوک روی تلگرام ثبت یا به‌روزرسانی می‌شود تا پیام‌ها به ورکر ربات برسند.
+        با لمس این دکمه، وب‌هوک رسمی تلگرام مستقیماً به آدرس سرور این پنل (<code class="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px]">/api/bot/webhook</code>) متصل می‌شود.
       </p>
+    </div>
+  </div>
+
+  <!-- Features & Glass Keyboard Guide -->
+  <div class="kpi-card mb-6 border-amber-200 dark:border-amber-900/50 bg-gradient-to-l from-amber-500/5 via-card to-card">
+    <h3 class="font-bold text-base mb-3 flex items-center gap-2">
+      <span class="text-xl">✨</span>
+      <span>امکانات و کلیدهای شیشه‌ای ربات تلگرام GoldPOS</span>
+    </h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+      <div class="p-3 rounded-lg border border-border bg-background space-y-1">
+        <div class="font-bold text-primary flex items-center gap-1.5">
+          <span>🔘</span>
+          <span>کلیدهای شیشه‌ای منو</span>
+        </div>
+        <p class="text-muted-foreground leading-relaxed">
+          با ارسال <code class="font-mono bg-muted px-1 rounded">/start</code>، منوی شیشه‌ای ۲ ستونه منظم شامل آمار، لایسنس‌ها، کاربران و دستگاه‌ها نمایش می‌یابد.
+        </p>
+      </div>
+
+      <div class="p-3 rounded-lg border border-border bg-background space-y-1">
+        <div class="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+          <span>🔔</span>
+          <span>ناتیفیکیشن ثبت‌نام</span>
+        </div>
+        <p class="text-muted-foreground leading-relaxed">
+          با ثبت هر درخواست اشتراک جدید از سایت، پیامی حاوی دکمه‌های شیشه‌ای «تایید و صدور آنی لایسنس» به پی‌وی ادمین ارسال می‌شود.
+        </p>
+      </div>
+
+      <div class="p-3 rounded-lg border border-border bg-background space-y-1">
+        <div class="font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+          <span>🧙‍♂️</span>
+          <span>ویزارد مرحله‌ای</span>
+        </div>
+        <p class="text-muted-foreground leading-relaxed">
+          صدور لایسنس و افزودن کاربر به صورت گام‌به‌گام (انتخاب کاربر ← انتخاب پلن ← مدت زمان ← سقف دستگاه ← صدور نهایی) انجام می‌شود.
+        </p>
+      </div>
+
+      <div class="p-3 rounded-lg border border-border bg-background space-y-1">
+        <div class="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+          <span>💾</span>
+          <span>دریافت فایل پشتیبان</span>
+        </div>
+        <p class="text-muted-foreground leading-relaxed">
+          امکان استخراج آنی کل داده‌های دیتابیس D1 و دریافت فایل JSON پشتیبان مستقیماً در قالب سند تلگرام با یک کلیک.
+        </p>
+      </div>
     </div>
   </div>
 

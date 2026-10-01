@@ -140,44 +140,51 @@ export async function POST({ locals, request }: APIContext) {
       return redirect(okUrl("removed"));
     }
 
-    if (action === "connect") {
-      // Read the two connection rows once (env first, rows as the fallback),
-      // then hand them to the client so the setup call costs no extra query.
-      const connectionSettings = await new SettingsService(DB).getMany(BOT_CONNECTION_KEYS);
-      const { workerUrl } = resolveBotConnection(env, connectionSettings);
-      if (!workerUrl) {
+    if (action === "connect" || action === "direct_connect") {
+      const { resolveBotToken } = await import("@/lib/telegram/bot-notifications");
+      const { TelegramBotApi } = await import("@/lib/telegram/bot-api");
+      const token = await resolveBotToken(DB, env);
+
+      if (!token) {
         return redirect(
           errUrl(
             "connect",
-            "آدرس ورکر ربات تنظیم نشده است؛ ابتدا آن را در بخش «تنظیمات» ← «اتصال با ورکر ربات» ذخیره کنید.",
+            "توکن ربات تلگرام هنوز وارد نشده است. ابتدا در بخش تنظیمات توکن را ذخیره کنید.",
           ),
         );
       }
-      const result = await setupBotWebhook(env, `${workerUrl}/webhook`, connectionSettings);
 
-      if (!result.ok) {
-        // The client already words every failure in Persian; never echo the key.
+      const bot = new TelegramBotApi(token);
+      const url = new URL(request.url);
+      const webhookUrl = `${url.origin}/api/bot/webhook`;
+
+      const settingsService = new SettingsService(DB);
+      const secretToken = (await settingsService.get(SETTING_KEYS.BOT_WEBHOOK_SECRET)) || undefined;
+
+      const setRes = await bot.setWebhook(webhookUrl, secretToken);
+
+      if (!setRes.ok) {
         await activityService.log({
           actorId: admin.id,
           action: "bot_webhook_connect_failed",
           targetType: "bot_webhook",
-          metadata: { reason: result.error || "unknown" },
+          metadata: { reason: setRes.description || "unknown" },
           ipAddress,
           result: "fail",
         });
-        return redirect(errUrl("connect", result.error || undefined));
+        return redirect(errUrl("connect", setRes.description || "ثبت وب‌هوک در تلگرام ناموفق بود"));
       }
 
       await activityService.log({
         actorId: admin.id,
         action: "bot_webhook_connected",
         targetType: "bot_webhook",
-        metadata: { url: result.url, pendingUpdates: result.pendingUpdates },
+        metadata: { url: webhookUrl },
         ipAddress,
         result: "success",
       });
 
-      return redirect(okUrl("connected", { pending: String(result.pendingUpdates ?? 0) }));
+      return redirect(okUrl("connected"));
     }
 
     return redirect("/admin/bot?err=unknown_action");

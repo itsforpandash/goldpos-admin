@@ -228,6 +228,22 @@ export async function POST({ locals, request }: APIContext) {
       ipAddress,
     });
 
+    // Notify Telegram Bot Admins with rich inline keyboard
+    try {
+      const { notifyAdminsOfSignup } = await import("@/lib/telegram/bot-notifications");
+      const plan = payload?.planId ? await signupService.getPlanById(Number(payload.planId)) : null;
+      await notifyAdminsOfSignup(DB, locals.runtime.env, {
+        id: result.id,
+        contact: result.contact,
+        fullName: payload?.fullName,
+        planName: plan?.name,
+        planId: payload?.planId ? Number(payload.planId) : null,
+        note: payload?.note,
+      });
+    } catch (notifyErr) {
+      console.warn("[signup-notify] Telegram notification failed:", notifyErr);
+    }
+
     await activityService.log({
       action: "signup_requested",
       targetType: "signup_request",
