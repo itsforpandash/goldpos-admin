@@ -7,16 +7,21 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const { request, locals } = context;
   const url = new URL(request.url);
 
-  // Skip auth for static assets, API routes, login page and landing
-  if (
-    url.pathname.startsWith("/assets/") ||
-    url.pathname.startsWith("/api/") ||
-    url.pathname.startsWith("/manifest") ||
-    url.pathname === "/sw.js" ||
-    url.pathname === "/favicon.svg" ||
-    url.pathname === "/admin/login" ||
-    url.pathname === "/"
-  ) {
+  // Protected surface is /admin — everything else is public on purpose:
+  // the landing page, /signup, /health, /api (authenticated per endpoint) and
+  // the catch-all 404 (src/pages/[...slug].astro).
+  //
+  // The previous rule inverted that: it guarded EVERY path not explicitly
+  // listed, so a visitor who followed a dead link was bounced to the login
+  // page instead of seeing 404, and the unknown path never reached the
+  // catch-all at all. A future admin page must live under /admin/ — that is
+  // the whole contract of this block.
+  if (!url.pathname.startsWith("/admin/")) {
+    return next();
+  }
+
+  // The only public page under /admin is the login form itself.
+  if (url.pathname === "/admin/login") {
     return next();
   }
 

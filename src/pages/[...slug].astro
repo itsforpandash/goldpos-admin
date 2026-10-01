@@ -1,0 +1,40 @@
+---
+// Catch-all route: every path that matches no other route lands here.
+//
+// Why this exists: the Cloudflare adapter resolves an unmatched path by asking
+// the static asset layer for it (`env.ASSETS.fetch`), but Workers static
+// assets are served by the edge before the Worker runs, so no ASSETS binding
+// is ever passed in. The adapter therefore throws and the visitor sees
+// Cloudflare's "error code: 1101" instead of a 404 — a broken link looks like
+// an outage. Declaring a rest route means `app.match()` always succeeds and
+// that code path is never reached.
+//
+// API paths are answered here too, but as JSON: a client sending an
+// Accept: application/json probe must not receive an HTML document back.
+import Layout from '@/layouts/Layout.astro';
+
+if (Astro.url.pathname.startsWith('/api/')) {
+  return new Response(JSON.stringify({ success: false, message: 'not found' }), {
+    status: 404,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
+}
+
+Astro.response.status = 404;
+---
+
+<Layout title="صفحه پیدا نشد">
+  <div class="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
+    <p class="text-7xl font-bold text-primary">۴۰۴</p>
+    <h1 class="mt-4 text-xl font-bold">صفحه مورد نظر پیدا نشد</h1>
+    <p class="mt-2 max-w-md text-sm text-muted-foreground">
+      نشانی وارد شده اشتباه است یا این صفحه حذف شده است.
+    </p>
+    <a
+      href="/"
+      class="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+    >
+      بازگشت به صفحه اصلی
+    </a>
+  </div>
+</Layout>

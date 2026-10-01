@@ -1,0 +1,23 @@
+---
+// Unknown paths currently reach no route at all, and on the Cloudflare
+// adapter that surfaces as an uncaught exception (error 1101) rather than a
+// 404 — a broken link looks like an outage. This page gives those requests a
+// real answer.
+import Layout from '@/layouts/Layout.astro';
+---
+
+<Layout title="صفحه پیدا نشد">
+  <div class="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
+    <p class="text-7xl font-bold text-primary">۴۰۴</p>
+    <h1 class="mt-4 text-xl font-bold">صفحه مورد نظر پیدا نشد</h1>
+    <p class="mt-2 max-w-md text-sm text-muted-foreground">
+      نشانی وارد شده اشتباه است یا این صفحه حذف شده است.
+    </p>
+    <a
+      href="/"
+      class="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+    >
+      بازگشت به صفحه اصلی
+    </a>
+  </div>
+</Layout>

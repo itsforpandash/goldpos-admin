@@ -11,7 +11,8 @@
   },
   "upload_source_maps": true,
   "vars": {
-    "EXAMPLE_VALUE": "example_value"
+    "EXAMPLE_VALUE": "example_value",
+    "BOT_WORKER_URL": "https://goldposbot.itsfordasbo.workers.dev"
   },
   "d1_databases": [
     {
