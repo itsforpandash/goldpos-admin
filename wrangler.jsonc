@@ -11,19 +11,8 @@
   },
   "upload_source_maps": true,
   "vars": {
-    "EXAMPLE_VALUE": "example_value",
-    "BOT_WORKER_URL": "https://goldposbot.itsfordasbo.workers.dev"
+    "EXAMPLE_VALUE": "example_value"
   },
-  // Worker-to-Worker on *.workers.dev is refused by the platform (error 1042),
-  // so the panel reaches the bot through a service binding instead of a public
-  // fetch. BOT_WORKER_URL still matters: it is the address the panel hands to
-  // Telegram as the webhook target.
-  "services": [
-    {
-      "binding": "BOT_WORKER",
-      "service": "goldposbot"
-    }
-  ],
   "d1_databases": [
     {
       "binding": "DB",
