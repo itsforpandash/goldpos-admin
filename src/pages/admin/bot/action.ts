@@ -1,8 +1,8 @@
 import type { APIContext } from "astro";
 import { ActivityService } from "@/lib/services/activity";
 import { getClientIp } from "@/lib/session-helpers";
-import { resolveBotConnection, type BotEnv } from "@/lib/bot-client";
-import { BOT_CONNECTION_KEYS, SETTING_KEYS, SettingsService } from "@/lib/services/settings";
+import { type BotEnv } from "@/lib/bot-client";
+import { SETTING_KEYS, SettingsService } from "@/lib/services/settings";
 import { TelegramBotApi } from "@/lib/telegram/bot-api";
 import { resolveBotToken } from "@/lib/telegram/bot-notifications";
 import { getMainMenuKeyboard } from "@/lib/telegram/bot-dispatcher";
@@ -56,6 +56,7 @@ export async function POST({ locals, request }: APIContext) {
       const tokenInput = String(form.get("bot_token") || "").trim();
       const chatIdRaw = String(form.get("chat_id") || "").trim();
       const adminName = String(form.get("admin_name") || "").trim() || "مدیر اصلی";
+      let webhookInput = String(form.get("webhook_url") || "").trim();
 
       // Save token if provided
       if (tokenInput) {
@@ -106,34 +107,81 @@ export async function POST({ locals, request }: APIContext) {
           .run();
       }
 
-      // Register Webhook to current server
-      const bot = new TelegramBotApi(token);
-      const url = new URL(request.url);
-      const webhookUrl = `${url.origin}/api/bot/webhook`;
+      // Determine Webhook URL
+      let webhookUrl = "";
+      if (webhookInput) {
+        if (!webhookInput.startsWith("http://") && !webhookInput.startsWith("https://")) {
+          webhookInput = `https://${webhookInput}`;
+        }
+        if (!webhookInput.includes("/api/bot/webhook")) {
+          webhookInput = `${webhookInput.replace(/\/+$/, "")}/api/bot/webhook`;
+        }
+        webhookUrl = webhookInput;
+        await settingsService.set(SETTING_KEYS.BOT_WEBHOOK_URL, webhookUrl, admin.id);
+      } else {
+        const storedWebhook = await settingsService.get(SETTING_KEYS.BOT_WEBHOOK_URL);
+        if (storedWebhook) {
+          webhookUrl = storedWebhook;
+        } else {
+          const url = new URL(request.url);
+          webhookUrl = `${url.origin}/api/bot/webhook`;
+        }
+      }
 
+      // Validate Host before passing to Telegram
+      try {
+        const parsedWh = new URL(webhookUrl);
+        if (parsedWh.hostname === "localhost" || parsedWh.hostname === "127.0.0.1") {
+          return redirect(
+            errUrl(
+              "connect_failed",
+              "دامنه لوکال (localhost) از اینترنت عمومی برای تلگرام قابل مشاهده نیست. لطفاً آدرس عمومی دامنه کلودفلر یا سایت خود (مانند https://goldpos-admin.itsfordasbo.workers.dev) را در کادر «آدرس عمومی وب‌هوک» وارد فرمایید.",
+            ),
+          );
+        }
+      } catch {
+        return redirect(errUrl("connect_failed", "آدرس وب‌هوک وارد شده یک URL معتبر نیست."));
+      }
+
+      // Register Webhook to Telegram
+      const bot = new TelegramBotApi(token);
       const secretToken = (await settingsService.get(SETTING_KEYS.BOT_WEBHOOK_SECRET)) || undefined;
       const setRes = await bot.setWebhook(webhookUrl, secretToken);
 
       if (!setRes.ok) {
+        const desc = setRes.description || "";
+        let friendlyError = `خطا در ثبت وب‌هوک در سرور تلگرام: ${desc}`;
+
+        if (
+          desc.includes("Failed to resolve host") ||
+          desc.includes("Temporary failure in name resolution")
+        ) {
+          const parsedWh = new URL(webhookUrl);
+          friendlyError = `تلگرام نتوانست دامنه «${parsedWh.hostname}» را در اینترنت پیدا کند (Failed to resolve host). سرورهای تلگرام فقط دامنه‌های عمومی فعال را می‌شناسند. لطفاً آدرس عمومی دامنه کلودفلر خود (مانند https://goldpos-admin.itsfordasbo.workers.dev) را در کادر «آدرس عمومی وب‌هوک» قرار دهید.`;
+        } else if (desc.includes("HTTPS")) {
+          friendlyError = "تلگرام فقط از آدرس‌های امن HTTPS پشتیبانی می‌کند. لطفاً از پیشوند https:// استفاده کنید.";
+        }
+
         await activityService.log({
           actorId: admin.id,
           action: "bot_webhook_connect_failed",
           targetType: "bot_webhook",
-          metadata: { reason: setRes.description || "unknown" },
+          metadata: { reason: desc, url: webhookUrl },
           ipAddress,
           result: "fail",
         });
-        return redirect(
-          errUrl(
-            "connect_failed",
-            `خطا در ثبت وب‌هوک در سرور تلگرام: ${setRes.description || "توکن نامعتبر است"}`,
-          ),
-        );
+        return redirect(errUrl("connect_failed", friendlyError));
       }
 
       // If chat_id is known, send immediate welcome message to verify!
       let welcomeSent = false;
-      const targetChat = registeredChatId || (await DB.prepare(`SELECT chat_id FROM bot_admins WHERE is_active = 1 ORDER BY created_at ASC LIMIT 1`).first<{ chat_id: number }>())?.chat_id;
+      const targetChat =
+        registeredChatId ||
+        (
+          await DB.prepare(
+            `SELECT chat_id FROM bot_admins WHERE is_active = 1 ORDER BY created_at ASC LIMIT 1`,
+          ).first<{ chat_id: number }>()
+        )?.chat_id;
 
       if (targetChat) {
         try {
@@ -170,7 +218,48 @@ export async function POST({ locals, request }: APIContext) {
     }
 
     // ---------------------------------------------------------------
-    // 2. SEND TEST MESSAGE
+    // 2. POLL MESSAGES (همگام‌سازی بدون نیاز به وب‌هوک)
+    // ---------------------------------------------------------------
+    if (action === "poll") {
+      const token = await resolveBotToken(DB, env);
+      if (!token) return redirect(errUrl("no_token", "توکن ربات تنظیم نشده است."));
+
+      const bot = new TelegramBotApi(token);
+      const updatesRes = await bot.getUpdates();
+
+      if (!updatesRes.ok || !updatesRes.result) {
+        return redirect(
+          errUrl(
+            "poll_failed",
+            `خطا در دریافت پیام‌ها از تلگرام: ${updatesRes.description || "خطای نامشخص"}`,
+          ),
+        );
+      }
+
+      const updates = updatesRes.result;
+      const { handleTelegramUpdate } = await import("@/lib/telegram/bot-dispatcher");
+      let processed = 0;
+      let lastId = 0;
+
+      for (const update of updates) {
+        try {
+          await handleTelegramUpdate(update, DB, env);
+          processed++;
+          if (update.update_id) lastId = Math.max(lastId, update.update_id);
+        } catch (e) {
+          console.warn("[bot-action] Poll update error:", e);
+        }
+      }
+
+      if (lastId > 0) {
+        await bot.getUpdates(lastId + 1, 1, 0);
+      }
+
+      return redirect(okUrl("polled", { count: String(processed) }));
+    }
+
+    // ---------------------------------------------------------------
+    // 3. SEND TEST MESSAGE
     // ---------------------------------------------------------------
     if (action === "test_message") {
       const token = await resolveBotToken(DB, env);
@@ -216,7 +305,7 @@ export async function POST({ locals, request }: APIContext) {
     }
 
     // ---------------------------------------------------------------
-    // 3. DISCONNECT WEBHOOK
+    // 4. DISCONNECT WEBHOOK
     // ---------------------------------------------------------------
     if (action === "disconnect") {
       const token = await resolveBotToken(DB, env);
@@ -228,7 +317,7 @@ export async function POST({ locals, request }: APIContext) {
     }
 
     // ---------------------------------------------------------------
-    // 4. ADD / TOGGLE / REMOVE ADMINS
+    // 5. ADD / TOGGLE / REMOVE ADMINS
     // ---------------------------------------------------------------
     const chatIdRaw = String(form.get("chat_id") || "").trim();
 

@@ -81,6 +81,19 @@ export class TelegramBotApi {
     return this.call("deleteWebhook", { drop_pending_updates: dropPending });
   }
 
+  async getUpdates(
+    offset?: number,
+    limit = 50,
+    timeout = 0,
+  ): Promise<TelegramApiResponse<any[]>> {
+    return this.call("getUpdates", {
+      offset: offset !== undefined ? offset : undefined,
+      limit,
+      timeout,
+      allowed_updates: ["message", "callback_query"],
+    });
+  }
+
   async sendMessage(
     chatId: number | string,
     text: string,

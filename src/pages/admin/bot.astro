@@ -12,6 +12,14 @@ const sessionAdmin = Astro.locals.SESSION;
 
 const settingsService = new SettingsService(DB);
 const currentToken = await resolveBotToken(DB, env);
+const storedWebhookUrl = await settingsService.get(SETTING_KEYS.BOT_WEBHOOK_URL);
+
+// Calculate suggested public webhook URL
+const defaultWebhookUrl =
+  storedWebhookUrl ||
+  (Astro.url.origin && !Astro.url.origin.includes('localhost') && !Astro.url.origin.includes('placeholder.invalid')
+    ? `${Astro.url.origin}/api/bot/webhook`
+    : 'https://goldpos-admin.itsfordasbo.workers.dev/api/bot/webhook');
 
 // Query Telegram directly if token exists
 let botInfo: any = null;
@@ -59,6 +67,9 @@ const localOkMessages: Record<string, string> = {
   connected_and_verified: '🎉 ربات با موفقیت فعال شد، وب‌هوک متصل گردید و پیام تایید به تلگرام شما ارسال شد!',
   connected: '✅ وب‌هوک ربات تلگرام با موفقیت متصل و فعال گردید.',
   test_sent: '⚡ پیام تستی با موفقیت به تلگرام شما ارسال شد. تلگرام خود را چک کنید.',
+  polled: Astro.url.searchParams.get('count')
+    ? `همگام‌سازی پیام‌ها انجام شد — ${toPersianDigits(Number(Astro.url.searchParams.get('count')) || 0)} دستور جدید پردازش شد.`
+    : 'همگام‌سازی پیام‌ها با موفقیت انجام شد.',
   disconnected: 'وب‌هوک ربات با موفقیت غیرفعال شد.',
   added: 'مدیر جدید به ربات اضافه شد.',
   toggled: 'وضعیت دسترسی مدیر تغییر کرد.',
@@ -143,29 +154,43 @@ const isWebhookActive = Boolean(webhookInfo?.url && webhookInfo.url.includes('/a
       </div>
 
       <!-- Quick Action Buttons -->
-      {isWebhookActive && (
-        <div class="flex items-center gap-2 w-full md:w-auto">
-          <form method="post" action="/admin/bot/action" class="w-full md:w-auto">
-            <input type="hidden" name="action" value="test_message" />
-            <button
-              type="submit"
-              class="w-full md:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
-            >
-              <span>⚡</span>
-              <span>ارسال پیام تست به تلگرام</span>
-            </button>
-          </form>
-          <form method="post" action="/admin/bot/action" onsubmit="return confirm('آیا از قطع اتصال وب‌هوک اطمینان دارید؟')">
-            <input type="hidden" name="action" value="disconnect" />
-            <button
-              type="submit"
-              class="px-3 py-2 rounded-lg border border-border hover:bg-destructive/10 hover:text-destructive text-muted-foreground text-xs font-medium transition-colors cursor-pointer"
-            >
-              قطع اتصال
-            </button>
-          </form>
-        </div>
-      )}
+      <div class="flex items-center gap-2 w-full md:w-auto flex-wrap">
+        <form method="post" action="/admin/bot/action">
+          <input type="hidden" name="action" value="poll" />
+          <button
+            type="submit"
+            class="px-3.5 py-2 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+            title="دریافت پیام‌های تلگرام به روش Polling (بدون نیاز به وب‌هوک)"
+          >
+            <span>🔄</span>
+            <span>دریافت پیام‌ها (Polling)</span>
+          </button>
+        </form>
+
+        {isWebhookActive && (
+          <>
+            <form method="post" action="/admin/bot/action">
+              <input type="hidden" name="action" value="test_message" />
+              <button
+                type="submit"
+                class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+              >
+                <span>⚡</span>
+                <span>ارسال پیام تست</span>
+              </button>
+            </form>
+            <form method="post" action="/admin/bot/action" onsubmit="return confirm('آیا از قطع اتصال وب‌هوک اطمینان دارید؟')">
+              <input type="hidden" name="action" value="disconnect" />
+              <button
+                type="submit"
+                class="px-3 py-2 rounded-lg border border-border hover:bg-destructive/10 hover:text-destructive text-muted-foreground text-xs font-medium transition-colors cursor-pointer"
+              >
+                قطع اتصال
+              </button>
+            </form>
+          </>
+        )}
+      </div>
     </div>
 
     {webhookInfo?.url && (
@@ -258,7 +283,29 @@ const isWebhookActive = Boolean(webhookInfo?.url && webhookInfo.url.includes('/a
         </div>
       </div>
 
-      <!-- Field 3: Admin Name (Optional) -->
+      <!-- Field 3: Public Webhook URL (دامنه عمومی) -->
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <label for="webhook_url" class="text-xs font-bold text-foreground flex items-center gap-1.5">
+            <span>🌐 آدرس اینترنتی وب‌هوک (Public HTTPS URL)</span>
+          </label>
+          <span class="text-[11px] text-muted-foreground">جهت دریافت اتصال تلگرام</span>
+        </div>
+        <input
+          type="text"
+          id="webhook_url"
+          name="webhook_url"
+          dir="ltr"
+          value={defaultWebhookUrl}
+          placeholder="https://goldpos-admin.itsfordasbo.workers.dev/api/bot/webhook"
+          class="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+        <p class="text-[11px] text-muted-foreground mt-1">
+          تلگرام برای ارسال وب‌هوک نیاز به یک آدرس اینترنتی معتبر عمومی دارد. اگر در محیط لوکال یا پیش‌نمایش هستید، آدرس ورکر کلودفلر خود (مانند <code class="bg-muted px-1 rounded font-mono">https://goldpos-admin.itsfordasbo.workers.dev/api/bot/webhook</code>) را قرار دهید یا از دکمه <b>«دریافت پیام‌ها (Polling)»</b> استفاده کنید.
+        </p>
+      </div>
+
+      <!-- Field 4: Admin Name (Optional) -->
       <div>
         <label for="admin_name" class="block text-xs font-medium text-muted-foreground mb-1.5">
           نام یا عنوان مدیر (اختیاری)

@@ -14,6 +14,7 @@
 export const SETTING_KEYS = {
   BOT_TOKEN: "bot_token",
   BOT_WEBHOOK_SECRET: "bot_webhook_secret",
+  BOT_WEBHOOK_URL: "bot_webhook_url",
   // How the panel FINDS and AUTHENTICATES against the bot Worker. The row keys
   // deliberately carry the same names as the env vars of the same name on the
   // panel Worker: env is read first, these rows are the fallback (bot-client's
