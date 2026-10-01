@@ -1,6 +1,8 @@
 import type { APIContext } from "astro";
 import {
   MIN_PASSWORD_LENGTH,
+  MIN_SETUP_TOKEN_LENGTH,
+  BOT_CONNECTION_KEYS,
   SETTING_KEYS,
   SettingsError,
   SettingsService,
@@ -10,7 +12,8 @@ import { AdminUserService } from "@/lib/services/admin";
 import { ActivityService } from "@/lib/services/activity";
 import { hashPassword, verifyPassword } from "@/lib/auth";
 import { getClientIp } from "@/lib/session-helpers";
-import { setupBotWebhook } from "@/lib/bot-client";
+import { resolveBotConnection, setupBotWebhook } from "@/lib/bot-client";
+import type { BotEnv, BotSettings } from "@/lib/bot-client";
 import { RateLimiter } from "@/lib/security";
 
 const redirect = (to: string) =>
@@ -33,15 +36,20 @@ const okUrl = (key: string, extra?: Record<string, string>) => {
   return `/admin/settings?${url.searchParams.toString()}`;
 };
 
-/** Two vars the generated Env type does not declare yet; bot-client reads them itself. */
-type BotEnv = { BOT_SETUP_TOKEN?: string; BOT_WORKER_URL?: string };
-
 // Brute-force guard on the current-password check (per IP + admin, in-memory
 // per isolate — same model as change-password/submit.ts).
 const passwordLimiter = new RateLimiter(5 * 60 * 1000, 20);
 
-/** Telegram tokens look like `123456:Abc...`; anything else is a paste error. */
+/** Ceiling for any one pasted setting (token, URL, key) — a paste accident, not a policy. */
 const MAX_SETTING_LENGTH = 512;
+
+/**
+ * The bot Worker is expected on Cloudflare's shared *.workers.dev host (the
+ * only host the panel is allowed to call). Anything else — an IP, a typo'd
+ * domain, plain http:// — is a paste error the operator can fix, so it gets
+ * its own Persian message instead of a silent connect failure later.
+ */
+const WORKERS_DEV_SUFFIX = ".workers.dev";
 
 export async function POST({ locals, request }: APIContext) {
   const { DB } = locals.runtime.env;
@@ -61,6 +69,17 @@ export async function POST({ locals, request }: APIContext) {
   const activityService = new ActivityService(DB);
 
   /**
+   * The two connection rows, read ONCE per request and handed to bot-client:
+   * a status check or a connect then costs a single pair of reads instead of
+   * one per call site. Lazily fetched, so the account actions stay D1-light.
+   */
+  let connectionSettings: Record<string, string> | undefined;
+  const getConnectionSettings = async (): Promise<BotSettings> => {
+    connectionSettings ??= await settingsService.getMany(BOT_CONNECTION_KEYS);
+    return connectionSettings;
+  };
+
+  /**
    * One paste = connected: when BOTH settings hold a value, register the
    * webhook in the same request. Failure is always a flash message with the
    * Persian wording bot-client already produced — never a 500, never the key.
@@ -71,11 +90,18 @@ export async function POST({ locals, request }: APIContext) {
     secret: string,
   ): Promise<{ ok: boolean; pending: number; error: string | null } | null> => {
     if (!token.trim() || !secret.trim()) return null;
-    const base = (env.BOT_WORKER_URL ?? "").trim().replace(/\/+$/, "");
-    if (!base) {
-      return { ok: false, pending: 0, error: "متغیر BOT_WORKER_URL روی ورکر پنل تنظیم نشده است." };
+    const conn = await getConnectionSettings();
+    // env first, then the row saved on this page — the same order the client uses.
+    const { workerUrl } = resolveBotConnection(env, conn);
+    if (!workerUrl) {
+      return {
+        ok: false,
+        pending: 0,
+        error:
+          "آدرس ورکر ربات تنظیم نشده است؛ ابتدا آن را در بخش «اتصال با ورکر ربات» ذخیره کنید.",
+      };
     }
-    const result = await setupBotWebhook(env, `${base}/webhook`);
+    const result = await setupBotWebhook(env, `${workerUrl}/webhook`, conn);
     return { ok: result.ok, pending: result.pendingUpdates ?? 0, error: result.error };
   };
 
@@ -216,6 +242,85 @@ export async function POST({ locals, request }: APIContext) {
           : redirect(saveConnectFailed(connect.error));
       }
       return redirect(okUrl("token_saved"));
+    }
+
+    // ── b. bot: Worker URL (editable; env first, this row as fallback) ─────
+    if (action === "bot_url") {
+      const raw = String(form.get("bot_url") || "").trim();
+
+      // Empty = clear the row: the client then falls back to the env var.
+      if (!raw) {
+        await settingsService.set(SETTING_KEYS.BOT_WORKER_URL, "", admin.id);
+        await activityService.log({
+          actorId: admin.id,
+          action: "settings_bot_url_changed",
+          targetType: "settings",
+          // Whether anything is configured — never the address itself.
+          metadata: { configured: false },
+          ipAddress,
+          result: "success",
+        });
+        return redirect(okUrl("bot_url_cleared"));
+      }
+
+      if (raw.length > MAX_SETTING_LENGTH) return redirect(errUrl("bot_url_invalid"));
+      if (!/^https:\/\//i.test(raw)) return redirect(errUrl("bot_url_scheme"));
+
+      let parsed: URL;
+      try {
+        parsed = new URL(raw);
+      } catch {
+        return redirect(errUrl("bot_url_invalid"));
+      }
+      if (parsed.protocol !== "https:") return redirect(errUrl("bot_url_scheme"));
+      // Credentials in a URL are never what the operator means to paste.
+      if (parsed.username || parsed.password) return redirect(errUrl("bot_url_invalid"));
+
+      const host = parsed.hostname.toLowerCase();
+      if (host === "workers.dev" || !host.endsWith(WORKERS_DEV_SUFFIX)) {
+        return redirect(errUrl("bot_url_host"));
+      }
+
+      const value = raw.replace(/\/+$/, "");
+      await settingsService.set(SETTING_KEYS.BOT_WORKER_URL, value, admin.id);
+      await activityService.log({
+        actorId: admin.id,
+        action: "settings_bot_url_changed",
+        targetType: "settings",
+        // Length only — the audit trail never carries the address.
+        metadata: { configured: true, length: value.length },
+        ipAddress,
+        result: "success",
+      });
+      return redirect(okUrl("bot_url_saved"));
+    }
+
+    // ── b. bot: setup key shared with the bot Worker (write-only) ──────────
+    if (action === "bot_setup_token") {
+      const value = String(form.get("bot_setup_token") || "").trim();
+      // Empty = leave the stored key untouched (same contract as bot_token),
+      // so the form reports what is missing instead of silently doing nothing.
+      if (!value || value.length > MAX_SETTING_LENGTH) {
+        return redirect("/admin/settings?err=fields");
+      }
+      // A random key, not a password: length floor only.
+      if (value.length < MIN_SETUP_TOKEN_LENGTH) return redirect(errUrl("setup_token_length"));
+      // It is sent as an HTTP header value, so it must stay printable ASCII
+      // with no space: a non-Latin1 or control character would make the very
+      // call this key authorises throw instead of fail politely.
+      if (!/^[\x21-\x7e]+$/.test(value)) return redirect(errUrl("setup_token_charset"));
+
+      await settingsService.set(SETTING_KEYS.BOT_SETUP_TOKEN, value, admin.id);
+      await activityService.log({
+        actorId: admin.id,
+        action: "settings_setup_token_changed",
+        targetType: "settings",
+        // Length only — the key itself never reaches the audit log.
+        metadata: { length: value.length, configured: true },
+        ipAddress,
+        result: "success",
+      });
+      return redirect(okUrl("setup_token_saved"));
     }
 
     // ── b. bot: rotate webhook secret (server-side, 64 hex chars) ───────────

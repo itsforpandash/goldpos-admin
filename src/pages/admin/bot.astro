@@ -1,15 +1,19 @@
 ---
 import Layout from '@/layouts/Layout.astro';
 import Flash from '@/components/admin/flash.astro';
-import { fetchBotStatus } from '@/lib/bot-client';
+import { fetchBotStatus, type BotEnv } from '@/lib/bot-client';
+import { SettingsService, BOT_CONNECTION_KEYS } from '@/lib/services/settings';
 import { toPersianDigits, formatPersianDate, formatPersianTime } from '@/lib/i18n';
 
 const { DB } = Astro.locals.runtime.env;
-// The control client needs two vars the generated Env type does not declare yet.
-const env = Astro.locals.runtime.env as unknown as {
-  BOT_SETUP_TOKEN?: string;
-  BOT_WORKER_URL?: string;
-};
+// The control client needs bindings the generated Env type does not declare yet
+// (the setup key, the bot address, and the BOT_WORKER service binding).
+const env = Astro.locals.runtime.env as unknown as BotEnv;
+
+const settingsService = new SettingsService(DB);
+// Connection rows are read ONCE per render and passed to bot-client (env
+// first, these rows only where env is empty) — no query per fetch.
+const connectionSettings = await settingsService.getMany(BOT_CONNECTION_KEYS);
 
 const ok = Astro.url.searchParams.get('ok');
 const err = Astro.url.searchParams.get('err');
@@ -41,7 +45,7 @@ const localOk = ok ? localOkMessages[ok] || null : null;
 const localErr = err ? errDetail || localErrMessages[err] || null : null;
 
 const [status, adminsResult] = await Promise.all([
-  fetchBotStatus(env),
+  fetchBotStatus(env, connectionSettings),
   DB.prepare(
     `SELECT chat_id, full_name, telegram_username, role, is_active, last_command_at, created_at
      FROM bot_admins ORDER BY is_active DESC, created_at ASC`,
@@ -100,7 +104,9 @@ const neutralBadge = 'rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700 d
 
     {!status.reachable && (
       <p class="mb-4 text-xs text-muted-foreground">
-        متغیرهای BOT_WORKER_URL و BOT_SETUP_TOKEN روی ورکر پنل تنظیم نشده‌اند.
+        ارتباط برقرار نشد. اگر آدرس ورکر ربات یا کلید اتصال هنوز وارد نشده، در
+        <a href="/admin/settings" class="text-primary underline underline-offset-2">تنظیمات</a>
+        ← «اتصال با ورکر ربات» آن‌ها را ذخیره کنید؛ متغیرهای env در صورت تنظیم بودن مقدم‌اند.
       </p>
     )}
 

@@ -2,19 +2,37 @@
  * Panel settings: the `settings` key/value table (migration 0012) plus the
  * account edits that only the settings page performs (username).
  *
- * Write-only rule for secrets: bot_token and bot_webhook_secret are read here
- * only to (a) know whether they are set and (b) derive a masked hint. Nothing
- * in this module returns a stored secret to a caller that could render it —
- * use `getMasked()`/`maskSettingValue()` for display and `get()`/`getMany()`
- * only inside an action that writes or compares, never in a view.
+ * Write-only rule for secrets: bot_token, bot_webhook_secret and
+ * bot_setup_token are read here only to (a) know whether they are set and
+ * (b) derive a masked hint. Nothing in this module returns a stored secret to
+ * a caller that could render it — use `getMasked()`/`maskSettingValue()` for
+ * display and `get()`/`getMany()` only inside an action that writes or
+ * compares, never in a view. BOT_WORKER_URL is the one non-secret here: it is
+ * an address, shown in full so the operator can check where the panel points.
  */
 
 export const SETTING_KEYS = {
   BOT_TOKEN: "bot_token",
   BOT_WEBHOOK_SECRET: "bot_webhook_secret",
+  // How the panel FINDS and AUTHENTICATES against the bot Worker. The row keys
+  // deliberately carry the same names as the env vars of the same name on the
+  // panel Worker: env is read first, these rows are the fallback (bot-client's
+  // resolveBotConnection), so an empty row never overrides a configured env.
+  BOT_WORKER_URL: "BOT_WORKER_URL",
+  BOT_SETUP_TOKEN: "BOT_SETUP_TOKEN",
 } as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
+
+/**
+ * The two connection settings, in the order bot-client falls back to them.
+ * Read ONCE per page operation and passed to the client so no render issues
+ * one D1 query per fetch.
+ */
+export const BOT_CONNECTION_KEYS = [
+  SETTING_KEYS.BOT_WORKER_URL,
+  SETTING_KEYS.BOT_SETUP_TOKEN,
+] as const;
 
 /** Typed, Persian-worded failure. The action route maps `code` to a flash key. */
 export class SettingsError extends Error {
@@ -46,6 +64,12 @@ export const MIN_USERNAME_LENGTH = 3;
 export const MAX_USERNAME_LENGTH = 64;
 /** Minimum length of a *new* password chosen on the settings page. */
 export const MIN_PASSWORD_LENGTH = 8;
+/**
+ * Minimum length of the panel ↔ bot Worker setup key. It is a RANDOM key
+ * (like a session secret), not a password, so there is no charset policy —
+ * only a length floor that rules out a pasted word or a chat id.
+ */
+export const MIN_SETUP_TOKEN_LENGTH = 32;
 
 /** Length of the generated webhook secret in hex characters (32 bytes). */
 export const WEBHOOK_SECRET_LENGTH = 64;

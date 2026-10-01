@@ -1,16 +1,14 @@
 ---
 import Layout from '@/layouts/Layout.astro';
 import Flash from '@/components/admin/flash.astro';
-import { SettingsService, SETTING_KEYS, maskSettingValue, isConfigured } from '@/lib/services/settings';
-import { fetchBotStatus } from '@/lib/bot-client';
+import { SettingsService, SETTING_KEYS, BOT_CONNECTION_KEYS, maskSettingValue, isConfigured } from '@/lib/services/settings';
+import { fetchBotStatus, type BotEnv } from '@/lib/bot-client';
 import { toPersianDigits, formatPersianDate, formatPersianTime } from '@/lib/i18n';
 
 const { DB } = Astro.locals.runtime.env;
-// The control client needs two vars the generated Env type does not declare yet.
-const env = Astro.locals.runtime.env as unknown as {
-  BOT_SETUP_TOKEN?: string;
-  BOT_WORKER_URL?: string;
-};
+// The control client needs bindings the generated Env type does not declare yet
+// (the setup key, the bot address, and the BOT_WORKER service binding).
+const env = Astro.locals.runtime.env as unknown as BotEnv;
 
 const session = Astro.locals.SESSION;
 if (!session) return Astro.redirect('/admin/login');
@@ -34,6 +32,9 @@ const localOkMessages: Record<string, string> = {
   secret_rotated: 'کلید جدید وب‌هوک تولید و ذخیره شد.',
   secret_connected: `کلید جدید ذخیره و وب‌هوک ثبت شد.${queueNote()}`,
   connected: `وب‌هوک ثبت شد.${queueNote()}`,
+  bot_url_saved: 'آدرس ورکر ربات ذخیره شد.',
+  bot_url_cleared: 'آدرس ورکر ربات پاک شد؛ اکنون از متغیر BOT_WORKER_URL استفاده می‌شود.',
+  setup_token_saved: 'کلید اتصال پنل و ورکر ذخیره شد.',
 };
 
 const localErrMessages: Record<string, string> = {
@@ -50,6 +51,12 @@ const localErrMessages: Record<string, string> = {
   connect: 'اتصال وب‌هوک ناموفق بود.',
   save_connect_failed: 'ذخیره شد، اما ثبت وب‌هوک ناموفق بود.',
   not_found: 'حساب کاربری پیدا نشد.',
+  bot_url_scheme: 'آدرس ورکر ربات باید با https:// شروع شود.',
+  bot_url_invalid: 'آدرس ورکر ربات معتبر نیست.',
+  // U+200E (left-to-right mark) wraps the host pattern so it stays one LTR run in this RTL line.
+  bot_url_host: 'آدرس ورکر ربات باید روی دامنهٔ ‎*.workers.dev‎ باشد؛ مثال: https://goldposbot.itsfordasbo.workers.dev',
+  setup_token_length: 'کلید اتصال پنل و ورکر باید حداقل ۳۲ کاراکتر باشد.',
+  setup_token_charset: 'کلید اتصال باید فقط از کاراکترهای انگلیسی بدون فاصله ساخته شود.',
 };
 
 // Route anything Flash cannot word well to our own banner; reuse Flash otherwise.
@@ -62,6 +69,17 @@ const localErr = err ? errDetail || localErrMessages[err] || null : null;
 // never touch the raw values again: the template below cannot render them.
 const rawToken = await settingsService.get(SETTING_KEYS.BOT_TOKEN);
 const rawSecret = await settingsService.get(SETTING_KEYS.BOT_WEBHOOK_SECRET);
+
+// Connection values for the bot Worker: read ONCE here and handed to
+// bot-client, so one render never issues a D1 query per fetch. env wins, these
+// rows are the fallback — the same order resolveBotConnection applies.
+const connectionSettings = await settingsService.getMany(BOT_CONNECTION_KEYS);
+const rawSetupToken = connectionSettings[SETTING_KEYS.BOT_SETUP_TOKEN];
+
+const envWorkerUrl = (env.BOT_WORKER_URL ?? '').trim().replace(/\/+$/, '');
+const dbWorkerUrl = (connectionSettings[SETTING_KEYS.BOT_WORKER_URL] ?? '').trim().replace(/\/+$/, '');
+const effectiveWorkerUrl = envWorkerUrl || dbWorkerUrl;
+
 const bot = {
   tokenSet: isConfigured(rawToken),
   tokenMasked: maskSettingValue(rawToken),
@@ -69,8 +87,18 @@ const bot = {
   secretMasked: maskSettingValue(rawSecret),
 };
 
+// Display-only view of the connection section: the URL in full (it is an
+// address, not a secret) and the setup key as mask + boolean, never its value.
+const conn = {
+  urlSet: !!effectiveWorkerUrl,
+  url: effectiveWorkerUrl,
+  urlSource: envWorkerUrl ? 'متغیر env روی ورکر پنل' : dbWorkerUrl ? 'پایگاه‌دادهٔ پنل' : '',
+  setupSet: isConfigured(rawSetupToken),
+  setupMasked: maskSettingValue(rawSetupToken),
+};
+
 const [status, adminRow, metaResult] = await Promise.all([
-  fetchBotStatus(env),
+  fetchBotStatus(env, connectionSettings),
   DB.prepare(
     `SELECT username, full_name, role, must_change_password FROM admin_users WHERE id = ?`,
   )
@@ -366,6 +394,108 @@ const secondaryBtn =
         </dd>
       </div>
     </dl>
+  </section>
+
+  <!-- ─── c. اتصال با ورکر ربات ─────────────────────────────────────────── -->
+  <section class="kpi-card mb-6">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <h2 class="text-lg font-bold">اتصال با ورکر ربات</h2>
+      <span class={conn.urlSet ? okBadge : badBadge}>
+        {conn.urlSet ? 'آدرس تنظیم شده' : 'آدرس تنظیم نشده'}
+      </span>
+    </div>
+
+    <p class="mb-4 text-xs text-muted-foreground">
+      پنل با آدرس زیر از ورکرِ ربات تلگرام فراخوانی می‌کند و با کلید اتصال، خودش را مقابل آن معرفی
+      می‌کند. اولویت همیشه با متغیرهای محیطی (env) روی ورکر پنل است؛ هر کدام خالی بماند، مقدار
+      ذخیره‌شده در پایگاه‌دادهٔ پنل جایگزین می‌شود.
+    </p>
+
+    <dl class="mb-6 grid gap-3 sm:grid-cols-2">
+      <div class="rounded-md border border-border p-3">
+        <dt class="text-xs text-muted-foreground">آدرس ورکر ربات (مؤثر)</dt>
+        <dd class="mt-1 text-sm font-medium">
+          {conn.url ? (
+            <span class="font-mono text-xs" dir="ltr">{conn.url}</span>
+          ) : (
+            <span class={badBadge}>تنظیم نشده</span>
+          )}
+        </dd>
+        {conn.urlSource && (
+          <div class="mt-2 text-[11px] text-muted-foreground">منبع مقدار: {conn.urlSource}</div>
+        )}
+      </div>
+
+      <div class="rounded-md border border-border p-3">
+        <dt class="text-xs text-muted-foreground">کلید اتصال پنل و ورکر</dt>
+        <dd class="mt-1 flex flex-wrap items-center gap-2 text-sm font-medium">
+          <span class={conn.setupSet ? okBadge : badBadge}>
+            {conn.setupSet ? 'تنظیم شده' : 'تنظیم نشده'}
+          </span>
+          <span class="font-mono text-xs" dir="ltr">{conn.setupMasked}</span>
+        </dd>
+        <div class="mt-2 text-[11px] text-muted-foreground">
+          مقدار ذخیره‌شده هرگز نمایش داده نمی‌شود.
+        </div>
+      </div>
+    </dl>
+
+    <form method="post" action="/admin/settings/action" class="mb-6 border-b border-border pb-6">
+      <input type="hidden" name="action" value="bot_url" />
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class={fieldLabel} for="bot_url">آدرس ورکر ربات</label>
+          <input
+            id="bot_url"
+            name="bot_url"
+            type="text"
+            value={conn.url}
+            dir="ltr"
+            maxlength="512"
+            placeholder="https://…"
+            class={fieldInput}
+          />
+          <p class="mt-1 text-[11px] text-muted-foreground">
+            آدرس ورکرِ ربات تلگرام که پنل از آن فراخوانی می‌کند؛ باید با
+            <span class="font-mono" dir="ltr">https://</span> شروع شود و حتماً روی دامنهٔ
+            <span class="font-mono" dir="ltr">*.workers.dev</span> باشد. مثال:
+            <span class="font-mono" dir="ltr">https://goldposbot.itsfordasbo.workers.dev</span>.
+            <br />
+            خالی بگذارید و ذخیره کنید تا مقدار پاک شود و به متغیر env برگردد.
+          </p>
+        </div>
+        <div class="flex items-end gap-3">
+          <button type="submit" class={primaryBtn}>ذخیرهٔ آدرس ورکر</button>
+        </div>
+      </div>
+    </form>
+
+    <form method="post" action="/admin/settings/action">
+      <input type="hidden" name="action" value="bot_setup_token" />
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class={fieldLabel} for="bot_setup_token">کلید اتصال پنل و ورکر</label>
+          <input
+            id="bot_setup_token"
+            name="bot_setup_token"
+            type="password"
+            autocomplete="new-password"
+            placeholder="…"
+            dir="ltr"
+            maxlength="512"
+            class={fieldInput}
+          />
+          <p class="mt-1 text-[11px] text-muted-foreground">
+            فقط‌نوشتنی است: خالی بگذارید تا مقدار فعلی حفظ شود و مقدار ذخیره‌شده هرگز نمایش داده
+            نمی‌شود (حداقل ۳۲ کاراکتر). این کلید باید در هر دو ورکر (پنل و ربات) یکسان باشد؛ اگر
+            یکی نباشد، پنل خطای «کلید اتصال یکی نیست» را نشان می‌دهد.
+          </p>
+        </div>
+        <div class="flex items-end gap-3">
+          <button type="submit" class={primaryBtn}>ذخیرهٔ کلید اتصال</button>
+        </div>
+      </div>
+    </form>
   </section>
 
   <p class="text-xs text-muted-foreground">

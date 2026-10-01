@@ -1,7 +1,8 @@
 import type { APIContext } from "astro";
 import { ActivityService } from "@/lib/services/activity";
 import { getClientIp } from "@/lib/session-helpers";
-import { setupBotWebhook } from "@/lib/bot-client";
+import { resolveBotConnection, setupBotWebhook, type BotEnv } from "@/lib/bot-client";
+import { BOT_CONNECTION_KEYS, SettingsService } from "@/lib/services/settings";
 
 const redirect = (to: string) =>
   new Response(null, { status: 303, headers: { Location: to } });
@@ -29,11 +30,9 @@ const ROLES = ["super_admin", "admin", "read_only"] as const;
 
 export async function POST({ locals, request }: APIContext) {
   const { DB } = locals.runtime.env;
-  // Two vars the generated Env type does not declare yet; bot-client reads them itself.
-  const env = locals.runtime.env as unknown as {
-    BOT_SETUP_TOKEN?: string;
-    BOT_WORKER_URL?: string;
-  };
+  // Bindings the generated Env type does not declare yet; bot-client reads them
+  // itself (setup key, bot address, and the BOT_WORKER service binding).
+  const env = locals.runtime.env as unknown as BotEnv;
   const admin = locals.SESSION;
   const ipAddress = getClientIp(request);
 
@@ -142,8 +141,19 @@ export async function POST({ locals, request }: APIContext) {
     }
 
     if (action === "connect") {
-      const base = (env.BOT_WORKER_URL ?? "").trim().replace(/\/+$/, "");
-      const result = await setupBotWebhook(env, `${base}/webhook`);
+      // Read the two connection rows once (env first, rows as the fallback),
+      // then hand them to the client so the setup call costs no extra query.
+      const connectionSettings = await new SettingsService(DB).getMany(BOT_CONNECTION_KEYS);
+      const { workerUrl } = resolveBotConnection(env, connectionSettings);
+      if (!workerUrl) {
+        return redirect(
+          errUrl(
+            "connect",
+            "آدرس ورکر ربات تنظیم نشده است؛ ابتدا آن را در بخش «تنظیمات» ← «اتصال با ورکر ربات» ذخیره کنید.",
+          ),
+        );
+      }
+      const result = await setupBotWebhook(env, `${workerUrl}/webhook`, connectionSettings);
 
       if (!result.ok) {
         // The client already words every failure in Persian; never echo the key.
