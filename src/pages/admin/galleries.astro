@@ -1,0 +1,79 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import Flash from '@/components/admin/flash.astro';
+import { GalleryService } from '@/lib/services/gallery';
+import { toPersianDigits, formatPersianDate } from '@/lib/i18n';
+
+const { DB } = Astro.locals.runtime.env;
+const galleryService = new GalleryService(DB);
+const galleries = await galleryService.getAll();
+
+const ok = Astro.url.searchParams.get('ok');
+const err = Astro.url.searchParams.get('err');
+---
+
+<Layout title="گالری‌های طلا و جواهر">
+  <Flash ok={ok} err={err} />
+
+  <div class="kpi-card mb-6">
+    <div class="flex items-center justify-between flex-wrap gap-4">
+      <div>
+        <h2 class="text-base font-bold text-foreground">اطلاعات فروشگاه‌ها و گالری‌های طلا</h2>
+        <p class="text-xs text-muted-foreground mt-1">
+          اطلاعات ثبت‌شده در مرحله راه‌اندازی اولیه اپلیکیشن موبایل (First-time Gallery Setup) جهت چاپ در فاکتورها و صدور لایسنس
+        </p>
+      </div>
+      <div class="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded-full font-medium">
+        مجموع گالری‌ها: {toPersianDigits(galleries.length)}
+      </div>
+    </div>
+  </div>
+
+  <div class="table-scroll rounded-md border border-border">
+    <table class="w-full min-w-[50rem] text-sm">
+      <thead class="bg-muted/50">
+        <tr class="text-right">
+          <th class="px-4 py-3 font-medium text-muted-foreground">نام گالری</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">نام مدیریت</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">شماره تماس</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">کاربر مرتبط</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">کد لایسنس</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">آدرس فروشگاه</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">آخرین به‌روزرسانی</th>
+        </tr>
+      </thead>
+      <tbody>
+        {galleries.length === 0 ? (
+          <tr>
+            <td colspan="7" class="h-28 text-center text-muted-foreground">
+              هنوز اطلاعات گالری ثبت نشده است. هنگام ورود کاربران در اپلیکیشن اندروید یا صدور لایسنس جدید، اطلاعات در اینجا نمایش داده می‌شود.
+            </td>
+          </tr>
+        ) : (
+          galleries.map((item: any) => (
+            <tr class="border-t border-border hover:bg-muted/30 transition-colors">
+              <td class="px-4 py-3 font-bold text-foreground flex items-center gap-2">
+                <span>👑</span>
+                <span>{item.gallery_name}</span>
+              </td>
+              <td class="px-4 py-3 text-muted-foreground">{item.owner_name || '—'}</td>
+              <td class="px-4 py-3 font-mono text-xs" dir="ltr">{item.phone || '—'}</td>
+              <td class="px-4 py-3">{item.user_name || '—'}</td>
+              <td class="px-4 py-3">
+                {item.license_code ? (
+                  <span class="font-mono text-xs bg-muted px-2 py-1 rounded inline-block">
+                    {item.license_code}
+                  </span>
+                ) : (
+                  <span class="text-muted-foreground text-xs">—</span>
+                )}
+              </td>
+              <td class="px-4 py-3 text-xs max-w-xs truncate" title={item.address}>{item.address || '—'}</td>
+              <td class="px-4 py-3 text-xs text-muted-foreground">{formatPersianDate(item.updated_at || item.created_at)}</td>
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  </div>
+</Layout>
