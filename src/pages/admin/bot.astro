@@ -1,373 +1,501 @@
 ---
 import Layout from '@/layouts/Layout.astro';
 import Flash from '@/components/admin/flash.astro';
-import { fetchBotStatus, type BotEnv } from '@/lib/bot-client';
-import { SettingsService, BOT_CONNECTION_KEYS } from '@/lib/services/settings';
+import { SettingsService, SETTING_KEYS, maskSettingValue } from '@/lib/services/settings';
 import { toPersianDigits, formatPersianDate, formatPersianTime } from '@/lib/i18n';
+import { TelegramBotApi } from '@/lib/telegram/bot-api';
+import { resolveBotToken } from '@/lib/telegram/bot-notifications';
 
 const { DB } = Astro.locals.runtime.env;
-// The control client needs bindings the generated Env type does not declare yet
-// (the setup key, the bot address, and the BOT_WORKER service binding).
-const env = Astro.locals.runtime.env as unknown as BotEnv;
+const env = Astro.locals.runtime.env as any;
+const sessionAdmin = Astro.locals.SESSION;
 
 const settingsService = new SettingsService(DB);
-// Connection rows are read ONCE per render and passed to bot-client (env
-// first, these rows only where env is empty) — no query per fetch.
-const connectionSettings = await settingsService.getMany(BOT_CONNECTION_KEYS);
+const currentToken = await resolveBotToken(DB, env);
+
+// Query Telegram directly if token exists
+let botInfo: any = null;
+let webhookInfo: any = null;
+let telegramReachable = false;
+
+if (currentToken) {
+  try {
+    const bot = new TelegramBotApi(currentToken);
+    const [meRes, whRes] = await Promise.all([
+      bot.getMe(),
+      bot.getWebhookInfo(),
+    ]);
+    if (meRes.ok && meRes.result) {
+      botInfo = meRes.result;
+      telegramReachable = true;
+    }
+    if (whRes.ok && whRes.result) {
+      webhookInfo = whRes.result;
+    }
+  } catch (err) {
+    console.warn('[admin-bot] Telegram query error:', err);
+  }
+}
+
+const adminsResult = await DB.prepare(
+  `SELECT chat_id, full_name, telegram_username, role, is_active, last_command_at, created_at
+   FROM bot_admins ORDER BY is_active DESC, created_at ASC`,
+).all<{
+  chat_id: number;
+  full_name: string | null;
+  telegram_username: string | null;
+  role: string;
+  is_active: number;
+  last_command_at: string | null;
+  created_at: string | null;
+}>();
+const admins = adminsResult.results || [];
 
 const ok = Astro.url.searchParams.get('ok');
 const err = Astro.url.searchParams.get('err');
 const errDetail = Astro.url.searchParams.get('msg');
-const pending = Astro.url.searchParams.get('pending');
 
-// Messages that need a specific wording (Flash only has a generic fallback).
 const localOkMessages: Record<string, string> = {
-  added: 'مدیر ربات اضافه شد.',
-  toggled: 'وضعیت مدیر ربات تغییر کرد.',
-  removed: 'مدیر ربات حذف شد.',
-  connected:
-    pending !== null
-      ? `وب‌هوک ثبت شد — ${toPersianDigits(Number(pending) || 0)} پیام در صف پردازش.`
-      : 'وب‌هوک با موفقیت ثبت شد.',
+  connected_and_verified: '🎉 ربات با موفقیت فعال شد، وب‌هوک متصل گردید و پیام تایید به تلگرام شما ارسال شد!',
+  connected: '✅ وب‌هوک ربات تلگرام با موفقیت متصل و فعال گردید.',
+  test_sent: '⚡ پیام تستی با موفقیت به تلگرام شما ارسال شد. تلگرام خود را چک کنید.',
+  disconnected: 'وب‌هوک ربات با موفقیت غیرفعال شد.',
+  added: 'مدیر جدید به ربات اضافه شد.',
+  toggled: 'وضعیت دسترسی مدیر تغییر کرد.',
+  removed: 'مدیر از فهرست حذف شد.',
 };
 
 const localErrMessages: Record<string, string> = {
-  connect: 'اتصال وب‌هوک ناموفق بود.',
+  fields: 'لطفاً فیلدهای فرم را به درستی تکمیل فرمایید.',
+  no_token: 'لطفاً ابتدا توکن ربات تلگرام را وارد کنید.',
+  invalid_token: 'فرمت توکن نامعتبر است. نمونه: 123456789:ABCdefGhI...',
+  invalid_chat_id: 'شناسه عددی تلگرام باید عددی باشد (مثلاً 123456789).',
+  connect_failed: 'خطا در برقراری ارتباط با سرور تلگرام.',
   exists: 'این شناسه چت قبلاً در فهرست مدیران ثبت شده است.',
-  role: 'نقش انتخاب‌شده معتبر نیست.',
-  missing: 'رکورد موردنظر پیدا نشد؛ شاید قبلاً حذف شده باشد.',
+  no_admin: 'ابتدا شناسه عددی تلگرام خود را ثبت کنید.',
+  test_failed: 'ارسال پیام تست ناموفق بود. مطمئن شوید حداقل یک‌بار ربات را استارت زده‌اید.',
 };
 
-// Route anything Flash cannot word well to our own banner; reuse Flash otherwise.
 const flashOk = ok && !localOkMessages[ok] ? ok : null;
 const flashErr = err && !errDetail && !localErrMessages[err] ? err : null;
 const localOk = ok ? localOkMessages[ok] || null : null;
 const localErr = err ? errDetail || localErrMessages[err] || null : null;
 
-const [status, adminsResult] = await Promise.all([
-  fetchBotStatus(env, connectionSettings),
-  DB.prepare(
-    `SELECT chat_id, full_name, telegram_username, role, is_active, last_command_at, created_at
-     FROM bot_admins ORDER BY is_active DESC, created_at ASC`,
-  ).all<{
-    chat_id: number;
-    full_name: string | null;
-    telegram_username: string | null;
-    role: string;
-    is_active: number;
-    last_command_at: string | null;
-    created_at: string | null;
-  }>(),
-]);
-const admins = adminsResult.results;
-
-// The bot's own vocabulary; the panel never invents a fourth role.
 const roleLabels: Record<string, string> = {
   super_admin: 'سوپر ادمین',
   admin: 'ادمین',
   read_only: 'فقط خواندن',
 };
 
-const okBadge = 'rounded-full bg-green-100 px-2 py-1 text-xs text-green-800 dark:bg-green-900/30 dark:text-green-300';
-const badBadge = 'rounded-full bg-red-100 px-2 py-1 text-xs text-red-800 dark:bg-red-900/30 dark:text-red-300';
-const neutralBadge = 'rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+const isWebhookActive = Boolean(webhookInfo?.url && webhookInfo.url.includes('/api/bot/webhook'));
 ---
 
-<Layout title="ربات تلگرام">
+<Layout title="ربات تلگرام هوشمند">
   <Flash ok={flashOk} err={flashErr} />
 
   {localOk && (
-    <div class="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-300" role="alert">
-      {localOk}
+    <div class="mb-5 rounded-lg border border-green-300 bg-green-50 px-4 py-3.5 text-sm font-medium text-green-900 dark:border-green-800 dark:bg-green-950 dark:text-green-200 shadow-xs flex items-center gap-2" role="alert">
+      <span class="text-xl">✅</span>
+      <span>{localOk}</span>
     </div>
   )}
 
   {localErr && (
-    <div class="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300" role="alert">
-      {localErr}
+    <div class="mb-5 rounded-lg border border-red-300 bg-red-50 px-4 py-3.5 text-sm font-medium text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200 shadow-xs flex items-center gap-2" role="alert">
+      <span class="text-xl">⚠️</span>
+      <span>{localErr}</span>
     </div>
   )}
 
-  <div class="kpi-card mb-6">
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h2 class="text-lg font-bold">وضعیت اتصال ربات</h2>
-      <span class={status.reachable ? okBadge : badBadge}>
-        {status.reachable ? 'ارتباط با ورکر ربات برقرار است' : 'ارتباط با ورکر ربات برقرار نیست'}
-      </span>
+  <!-- Live Status Hero Banner -->
+  <div class={`kpi-card mb-6 border transition-all ${isWebhookActive ? 'border-emerald-300 dark:border-emerald-800/60 bg-gradient-to-l from-emerald-500/5 via-card to-card' : 'border-amber-300 dark:border-amber-800/60 bg-gradient-to-l from-amber-500/5 via-card to-card'}`}>
+    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div class="flex items-center gap-3.5">
+        <div class={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shadow-xs shrink-0 ${isWebhookActive ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-amber-500 text-white shadow-amber-500/20'}`}>
+          {isWebhookActive ? '🤖' : '⚙️'}
+        </div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h2 class="text-lg font-bold text-foreground">
+              {botInfo?.first_name ? `ربات: ${botInfo.first_name}` : 'ربات تلگرام GoldPOS'}
+            </h2>
+            {botInfo?.username && (
+              <a
+                href={`https://t.me/${botInfo.username}`}
+                target="_blank"
+                rel="noreferrer"
+                class="font-mono text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold hover:bg-primary/20 transition-colors"
+                dir="ltr"
+              >
+                @{botInfo.username} ↗
+              </a>
+            )}
+            <span class={`text-xs px-2.5 py-0.5 rounded-full font-bold ${isWebhookActive ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'}`}>
+              {isWebhookActive ? '● متصل و آنلاین' : '○ در انتظار اتصال'}
+            </span>
+          </div>
+          <p class="text-xs text-muted-foreground mt-1">
+            {isWebhookActive
+              ? 'وب‌هوک فعال است؛ تمام دستورات، کلیدهای شیشه‌ای و ناتیفیکیشن‌های ثبت‌نام در لحظه کار می‌کنند.'
+              : 'برای شروع کار، توکن ربات و شناسه عددی تلگرام خود را در فرم زیر وارد کرده و دکمه اتصال را بزنید.'}
+          </p>
+        </div>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      {isWebhookActive && (
+        <div class="flex items-center gap-2 w-full md:w-auto">
+          <form method="post" action="/admin/bot/action" class="w-full md:w-auto">
+            <input type="hidden" name="action" value="test_message" />
+            <button
+              type="submit"
+              class="w-full md:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+            >
+              <span>⚡</span>
+              <span>ارسال پیام تست به تلگرام</span>
+            </button>
+          </form>
+          <form method="post" action="/admin/bot/action" onsubmit="return confirm('آیا از قطع اتصال وب‌هوک اطمینان دارید؟')">
+            <input type="hidden" name="action" value="disconnect" />
+            <button
+              type="submit"
+              class="px-3 py-2 rounded-lg border border-border hover:bg-destructive/10 hover:text-destructive text-muted-foreground text-xs font-medium transition-colors cursor-pointer"
+            >
+              قطع اتصال
+            </button>
+          </form>
+        </div>
+      )}
     </div>
 
-    {status.error && (
-      <p class="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300" role="alert">
-        {status.error}
-      </p>
+    {webhookInfo?.url && (
+      <div class="mt-4 pt-3 border-t border-border/60 flex items-center justify-between flex-wrap gap-2 text-xs text-muted-foreground">
+        <div class="flex items-center gap-2">
+          <span>آدرس وب‌هوک فعال:</span>
+          <code class="font-mono text-[11px] bg-muted px-2 py-0.5 rounded text-foreground" dir="ltr">{webhookInfo.url}</code>
+        </div>
+        <div>
+          پیام‌های صف: <strong class="text-foreground">{toPersianDigits(webhookInfo.pending_update_count || 0)}</strong>
+        </div>
+      </div>
     )}
+  </div>
 
-    {!status.reachable && (
-      <p class="mb-4 text-xs text-muted-foreground">
-        ارتباط برقرار نشد. اگر آدرس ورکر ربات یا کلید اتصال هنوز وارد نشده، در
-        <a href="/admin/settings" class="text-primary underline underline-offset-2">تنظیمات</a>
-        ← «اتصال با ورکر ربات» آن‌ها را ذخیره کنید؛ متغیرهای env در صورت تنظیم بودن مقدم‌اند.
-      </p>
-    )}
+  <!-- One-Click Setup Form: Token & Chat ID -->
+  <div class="kpi-card mb-6 border-primary/20 shadow-md">
+    <div class="flex items-center gap-2.5 mb-4 pb-3 border-b border-border">
+      <div class="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">
+        ⚡
+      </div>
+      <div>
+        <h3 class="font-bold text-base text-foreground">راه‌اندازی و اتصال خودکار با یک کلیک</h3>
+        <p class="text-xs text-muted-foreground">فقط توکن دریافتی از BotFather و شناسه عددی تلگرام خود را وارد کنید؛ بقیه کارها خودکار انجام می‌شود.</p>
+      </div>
+    </div>
 
-    <dl class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <div class="rounded-md border border-border p-3">
-        <dt class="text-xs text-muted-foreground">توکن ربات</dt>
-        <dd class="mt-1 text-sm font-medium">
-          <span class={status.botTokenConfigured ? okBadge : badBadge}>
-            {status.botTokenConfigured ? 'تنظیم شده' : 'تنظیم نشده'}
-          </span>
-        </dd>
+    <form method="post" action="/admin/bot/action" class="space-y-4">
+      <input type="hidden" name="action" value="quick_setup" />
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Field 1: Bot Token -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label for="bot_token" class="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <span>🔑 توکن ربات تلگرام (Bot Token)</span>
+              <span class="text-destructive">*</span>
+            </label>
+            <a
+              href="https://t.me/BotFather"
+              target="_blank"
+              rel="noreferrer"
+              class="text-[11px] text-primary hover:underline"
+            >
+              دریافت از @BotFather ↗
+            </a>
+          </div>
+          <input
+            type="text"
+            id="bot_token"
+            name="bot_token"
+            dir="ltr"
+            placeholder={currentToken ? maskSettingValue(currentToken) : "7123456789:AAHk1234567890abcdef..."}
+            class="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          <p class="text-[11px] text-muted-foreground mt-1">
+            {currentToken ? 'توکن قبلاً ثبت شده است. اگر می‌خواهید تغییر کند، توکن جدید را وارد کنید.' : 'توکن ربات را پس از ساخت در @BotFather در اینجا الصاق نمایید.'}
+          </p>
+        </div>
+
+        <!-- Field 2: Admin Telegram Chat ID -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label for="chat_id" class="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <span>🆔 شناسه عددی چت شما (Chat ID)</span>
+              <span class="text-destructive">*</span>
+            </label>
+            <a
+              href="https://t.me/userinfobot"
+              target="_blank"
+              rel="noreferrer"
+              class="text-[11px] text-primary hover:underline"
+            >
+              دریافت از @userinfobot ↗
+            </a>
+          </div>
+          <input
+            type="text"
+            id="chat_id"
+            name="chat_id"
+            inputmode="numeric"
+            dir="ltr"
+            value={admins[0]?.chat_id ? String(admins[0].chat_id) : ""}
+            placeholder="مثال: 123456789"
+            class="w-full rounded-lg border border-border bg-background px-3.5 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          <p class="text-[11px] text-muted-foreground mt-1">
+            شناسه کاربری عددی شما جهت دریافت ناتیفیکیشن ثبت‌نام‌ها و دسترسی به منوی شیشه‌ای ادمین.
+          </p>
+        </div>
       </div>
 
-      <div class="rounded-md border border-border p-3">
-        <dt class="text-xs text-muted-foreground">کلید تأیید وب‌هوک</dt>
-        <dd class="mt-1 text-sm font-medium">
-          <span class={status.webhookSecretConfigured ? okBadge : badBadge}>
-            {status.webhookSecretConfigured ? 'تنظیم شده' : 'تنظیم نشده'}
-          </span>
-        </dd>
+      <!-- Field 3: Admin Name (Optional) -->
+      <div>
+        <label for="admin_name" class="block text-xs font-medium text-muted-foreground mb-1.5">
+          نام یا عنوان مدیر (اختیاری)
+        </label>
+        <input
+          type="text"
+          id="admin_name"
+          name="admin_name"
+          value={admins[0]?.full_name || sessionAdmin?.username || "مدیر اصلی"}
+          placeholder="مثال: مدیریت طلافروشی"
+          class="w-full max-w-md rounded-lg border border-border bg-background px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
       </div>
 
-      <div class="rounded-md border border-border p-3">
-        <dt class="text-xs text-muted-foreground">مدیران فعال ربات</dt>
-        <dd class="mt-1 text-sm font-medium">
-          <span class={status.activeAdmins === null ? neutralBadge : okBadge}>
-            {status.activeAdmins === null ? 'نامعلوم' : toPersianDigits(status.activeAdmins)}
-          </span>
-        </dd>
-      </div>
-
-      <div class="rounded-md border border-border p-3 sm:col-span-2 lg:col-span-3">
-        <dt class="text-xs text-muted-foreground">وضعیت وب‌هوک</dt>
-        <dd class="mt-1 text-sm">
-          {status.webhook?.url ? (
-            <div>
-              <div class="flex flex-wrap items-center gap-2">
-                <span class={okBadge}>ثبت شده</span>
-                <span class="font-mono text-xs" dir="ltr">{status.webhook.url}</span>
-              </div>
-              <div class="mt-2 text-xs text-muted-foreground">
-                پیام‌های در انتظار پردازش: {toPersianDigits(status.webhook.pendingUpdates)}
-              </div>
-              {status.webhook.lastError && (
-                <div class="mt-1 text-xs text-red-600 dark:text-red-400">
-                  آخرین خطا: <span dir="ltr">{status.webhook.lastError}</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <span>وب‌هوک ثبت نشده</span>
-          )}
-        </dd>
-      </div>
-    </dl>
-
-    <div class="mt-4 border-t border-border pt-4">
-      <form method="post" action="/admin/bot/action">
-        <input type="hidden" name="action" value="connect" />
+      <div class="pt-2">
         <button
           type="submit"
-          class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
+          class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold px-7 py-3 text-sm transition-all shadow-md hover:shadow-lg cursor-pointer"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          <span>ثبت و اتصال خودکار وب‌هوک تلگرام (One-Click Setup)</span>
+          <span>⚡</span>
+          <span>ذخیره، راه‌اندازی و اتصال خودکار ربات با یک کلیک</span>
         </button>
-      </form>
-      <p class="mt-2 text-xs text-muted-foreground">
-        با لمس این دکمه، وب‌هوک رسمی تلگرام مستقیماً به آدرس سرور این پنل (<code class="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px]">/api/bot/webhook</code>) متصل می‌شود.
-      </p>
+      </div>
+    </form>
+  </div>
+
+  <!-- Step-by-Step Visual Guide (راهنمای سریع و آسان) -->
+  <div class="kpi-card mb-6 border-amber-200 dark:border-amber-900/40 bg-gradient-to-l from-amber-500/5 via-card to-card">
+    <h3 class="font-bold text-sm text-foreground mb-3 flex items-center gap-2">
+      <span class="text-xl">📖</span>
+      <span>راهنمای ۳ مرحله‌ای و آسان راه‌اندازی ربات در کمتر از ۱ دقیقه</span>
+    </h3>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs">
+      <div class="p-3.5 rounded-lg border border-border bg-background flex flex-col justify-between gap-2 shadow-xs">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-bold text-amber-600 dark:text-amber-400 text-sm">مرحله ۱: دریافت توکن</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold">۱</span>
+          </div>
+          <p class="text-muted-foreground leading-relaxed">
+            در تلگرام به ربات <b><a href="https://t.me/BotFather" target="_blank" rel="noreferrer" class="text-primary underline">@BotFather</a></b> بروید، دستور <code class="bg-muted px-1 rounded">/newbot</code> را بفرستید، یک نام و یک آیدی انتخاب کنید و توکن متنی دریافتی را کپی نمایید.
+          </p>
+        </div>
+      </div>
+
+      <div class="p-3.5 rounded-lg border border-border bg-background flex flex-col justify-between gap-2 shadow-xs">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-bold text-blue-600 dark:text-blue-400 text-sm">مرحله ۲: دریافت شناسه چت</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 font-bold">۲</span>
+          </div>
+          <p class="text-muted-foreground leading-relaxed">
+            در تلگرام به ربات <b><a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" class="text-primary underline">@userinfobot</a></b> پیام دهید تا عدد اختصاصی شما (مانند <code class="bg-muted px-1 rounded">123456789</code>) را به شما نشان دهد.
+          </p>
+        </div>
+      </div>
+
+      <div class="p-3.5 rounded-lg border border-border bg-background flex flex-col justify-between gap-2 shadow-xs">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-bold text-emerald-600 dark:text-emerald-400 text-sm">مرحله ۳: لمس دکمه اتصال</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold">۳</span>
+          </div>
+          <p class="text-muted-foreground leading-relaxed">
+            هر دو مقدار را در کادرهای بالا قرار داده و دکمه اتصال را بزنید. وب‌هوک متصل شده و بلافاصله پیام تبریک و کلیدهای شیشه‌ای به تلگرام شما ارسال می‌شود!
+          </p>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Features & Glass Keyboard Guide -->
-  <div class="kpi-card mb-6 border-amber-200 dark:border-amber-900/50 bg-gradient-to-l from-amber-500/5 via-card to-card">
-    <h3 class="font-bold text-base mb-3 flex items-center gap-2">
+  <!-- Bot Admins Management Table -->
+  <div class="kpi-card mb-6">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div>
+        <h3 class="font-bold text-base text-foreground">مدیران مجاز ربات تلگرام</h3>
+        <p class="text-xs text-muted-foreground">فقط شناسه‌های ثبت‌شده در این فهرست اجازه اجرای دستورات، صدور لایسنس و دریافت ناتیفیکیشن را دارند.</p>
+      </div>
+
+      <details class="text-xs">
+        <summary class="cursor-pointer font-bold px-3 py-1.5 rounded-lg border border-border hover:bg-muted text-primary select-none">
+          + افزودن دستی مدیر دیگر
+        </summary>
+        <form method="post" action="/admin/bot/action" class="mt-3 p-3 rounded-lg border border-border bg-muted/40 space-y-2">
+          <input type="hidden" name="action" value="add" />
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <input
+              type="text"
+              name="chat_id"
+              inputmode="numeric"
+              required
+              placeholder="شناسه عددی تلگرام *"
+              class="rounded border border-border bg-background px-2.5 py-1.5 text-xs"
+            />
+            <input
+              type="text"
+              name="full_name"
+              placeholder="نام کامل مدیر"
+              class="rounded border border-border bg-background px-2.5 py-1.5 text-xs"
+            />
+            <select name="role" class="rounded border border-border bg-background px-2.5 py-1.5 text-xs">
+              <option value="super_admin">سوپر ادمین (دسترسی کامل)</option>
+              <option value="admin">ادمین عادی</option>
+              <option value="read_only">فقط مشاهده آمار</option>
+            </select>
+          </div>
+          <button type="submit" class="w-full sm:w-auto px-4 py-1.5 rounded bg-primary text-primary-foreground font-bold text-xs cursor-pointer">
+            ثبت مدیر جدید
+          </button>
+        </form>
+      </details>
+    </div>
+
+    {admins.length === 0 ? (
+      <div class="text-center py-8 text-xs text-muted-foreground border border-dashed rounded-lg">
+        هنوز هیچ مدیری ثبت نشده است. از فرم بالای صفحه شناسه عددی تلگرام خود را وارد فرمایید.
+      </div>
+    ) : (
+      <div class="overflow-x-auto">
+        <table class="w-full text-right text-xs">
+          <thead>
+            <tr class="border-b border-border text-muted-foreground">
+              <th class="py-2.5 px-3">شناسه چت</th>
+              <th class="py-2.5 px-3">نام مدیر</th>
+              <th class="py-2.5 px-3">نام کاربری</th>
+              <th class="py-2.5 px-3">نقش</th>
+              <th class="py-2.5 px-3">وضعیت</th>
+              <th class="py-2.5 px-3">آخرین ارتباط</th>
+              <th class="py-2.5 px-3 text-left">عملیات</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            {admins.map((adm: any) => (
+              <tr class="hover:bg-muted/30 transition-colors">
+                <td class="py-3 px-3 font-mono" dir="ltr">
+                  <code>{adm.chat_id}</code>
+                </td>
+                <td class="py-3 px-3 font-medium text-foreground">
+                  {adm.full_name || '—'}
+                </td>
+                <td class="py-3 px-3 font-mono text-muted-foreground" dir="ltr">
+                  {adm.telegram_username ? `@${adm.telegram_username}` : '—'}
+                </td>
+                <td class="py-3 px-3">
+                  <span class="px-2 py-0.5 rounded text-[11px] bg-muted font-bold text-foreground">
+                    {roleLabels[adm.role] || adm.role}
+                  </span>
+                </td>
+                <td class="py-3 px-3">
+                  <span class={`px-2 py-0.5 rounded-full text-[10px] font-bold ${adm.is_active ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'}`}>
+                    {adm.is_active ? 'فعال' : 'غیرفعال'}
+                  </span>
+                </td>
+                <td class="py-3 px-3 text-muted-foreground text-[11px]">
+                  {adm.last_command_at ? formatPersianDate(adm.last_command_at) : 'تاکنون پیامی نداده'}
+                </td>
+                <td class="py-3 px-3 text-left">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <form method="post" action="/admin/bot/action">
+                      <input type="hidden" name="action" value="toggle" />
+                      <input type="hidden" name="chat_id" value={adm.chat_id} />
+                      <button
+                        type="submit"
+                        class="px-2 py-1 rounded border border-border text-[11px] hover:bg-muted cursor-pointer"
+                        title={adm.is_active ? 'غیرفعال کردن دسترسی' : 'فعال کردن دسترسی'}
+                      >
+                        {adm.is_active ? 'غیرفعال' : 'فعال‌سازی'}
+                      </button>
+                    </form>
+                    <form method="post" action="/admin/bot/action" onsubmit="return confirm('آیا از حذف این مدیر اطمینان دارید؟')">
+                      <input type="hidden" name="action" value="remove" />
+                      <input type="hidden" name="chat_id" value={adm.chat_id} />
+                      <button
+                        type="submit"
+                        class="px-2 py-1 rounded border border-border text-[11px] text-destructive hover:bg-destructive/10 cursor-pointer"
+                        title="حذف مدیر"
+                      >
+                        حذف
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+
+  <!-- Glass Features Overview -->
+  <div class="kpi-card mb-6">
+    <h3 class="font-bold text-sm text-foreground mb-3 flex items-center gap-2">
       <span class="text-xl">✨</span>
-      <span>امکانات و کلیدهای شیشه‌ای ربات تلگرام GoldPOS</span>
+      <span>امکانات فعال در منوی شیشه‌ای ربات تلگرام</span>
     </h3>
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-      <div class="p-3 rounded-lg border border-border bg-background space-y-1">
-        <div class="font-bold text-primary flex items-center gap-1.5">
-          <span>🔘</span>
-          <span>کلیدهای شیشه‌ای منو</span>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+      <div class="p-3 rounded-lg border border-border bg-muted/20">
+        <div class="font-bold text-foreground mb-1 flex items-center gap-1.5">
+          <span>📊</span>
+          <span>استعلام آنی آمار</span>
         </div>
         <p class="text-muted-foreground leading-relaxed">
-          با ارسال <code class="font-mono bg-muted px-1 rounded">/start</code>، منوی شیشه‌ای ۲ ستونه منظم شامل آمار، لایسنس‌ها، کاربران و دستگاه‌ها نمایش می‌یابد.
+          مشاهده تعداد کاربران، لایسنس‌های فعال/منقضی، دستگاه‌ها و درآمد با دکمه شیشه‌ای بروزرسانی.
         </p>
       </div>
 
-      <div class="p-3 rounded-lg border border-border bg-background space-y-1">
-        <div class="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+      <div class="p-3 rounded-lg border border-border bg-muted/20">
+        <div class="font-bold text-foreground mb-1 flex items-center gap-1.5">
           <span>🔔</span>
           <span>ناتیفیکیشن ثبت‌نام</span>
         </div>
         <p class="text-muted-foreground leading-relaxed">
-          با ثبت هر درخواست اشتراک جدید از سایت، پیامی حاوی دکمه‌های شیشه‌ای «تایید و صدور آنی لایسنس» به پی‌وی ادمین ارسال می‌شود.
+          دریافت آنی درخواست‌های اشتراک سایت با دکمه‌های تایید و صدور خودکار لایسنس یا رد درخواست.
         </p>
       </div>
 
-      <div class="p-3 rounded-lg border border-border bg-background space-y-1">
-        <div class="font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+      <div class="p-3 rounded-lg border border-border bg-muted/20">
+        <div class="font-bold text-foreground mb-1 flex items-center gap-1.5">
           <span>🧙‍♂️</span>
-          <span>ویزارد مرحله‌ای</span>
+          <span>ویزارد مرحله‌ای صدور</span>
         </div>
         <p class="text-muted-foreground leading-relaxed">
-          صدور لایسنس و افزودن کاربر به صورت گام‌به‌گام (انتخاب کاربر ← انتخاب پلن ← مدت زمان ← سقف دستگاه ← صدور نهایی) انجام می‌شود.
+          صدور لایسنس گام‌به‌گام (انتخاب کاربر ← پلن ← مدت زمان ← سقف دستگاه ← صدور آنی کد).
         </p>
       </div>
 
-      <div class="p-3 rounded-lg border border-border bg-background space-y-1">
-        <div class="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+      <div class="p-3 rounded-lg border border-border bg-muted/20">
+        <div class="font-bold text-foreground mb-1 flex items-center gap-1.5">
           <span>💾</span>
           <span>دریافت فایل پشتیبان</span>
         </div>
         <p class="text-muted-foreground leading-relaxed">
-          امکان استخراج آنی کل داده‌های دیتابیس D1 و دریافت فایل JSON پشتیبان مستقیماً در قالب سند تلگرام با یک کلیک.
+          استخراج آنی کل داده‌های دیتابیس D1 و دریافت فایل JSON پشتیبان مستقیماً در چت تلگرام.
         </p>
       </div>
     </div>
   </div>
-
-  <details class="kpi-card mb-6" open={!!err}>
-    <summary class="cursor-pointer select-none text-lg font-bold">+ افزودن مدیر</summary>
-    <form method="post" action="/admin/bot/action" class="mt-4 grid gap-4 sm:grid-cols-3">
-      <input type="hidden" name="action" value="add" />
-      <div>
-        <label class="mb-1 block text-xs text-muted-foreground" for="chat_id">شناسه چت تلگرام *</label>
-        <input
-          id="chat_id"
-          name="chat_id"
-          type="text"
-          inputmode="numeric"
-          dir="ltr"
-          required
-          placeholder="123456789"
-          class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-        />
-      </div>
-      <div>
-        <label class="mb-1 block text-xs text-muted-foreground" for="full_name">نام کامل</label>
-        <input
-          id="full_name"
-          name="full_name"
-          type="text"
-          placeholder="اختیاری"
-          class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-        />
-      </div>
-      <div>
-        <label class="mb-1 block text-xs text-muted-foreground" for="role">نقش *</label>
-        <select id="role" name="role" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm">
-          <option value="admin">ادمین</option>
-          <option value="super_admin">سوپر ادمین</option>
-          <option value="read_only">فقط خواندن</option>
-        </select>
-      </div>
-      <div class="sm:col-span-3">
-        <button
-          type="submit"
-          class="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          افزودن مدیر
-        </button>
-      </div>
-    </form>
-  </details>
-
-  <div class="table-scroll rounded-md border border-border">
-    <table class="w-full min-w-[56rem] text-sm">
-      <thead class="bg-muted/50">
-        <tr class="text-right">
-          <th class="px-4 py-3 font-medium text-muted-foreground">شناسه چت</th>
-          <th class="px-4 py-3 font-medium text-muted-foreground">نام کامل</th>
-          <th class="px-4 py-3 font-medium text-muted-foreground">نام کاربری تلگرام</th>
-          <th class="px-4 py-3 font-medium text-muted-foreground">نقش</th>
-          <th class="px-4 py-3 font-medium text-muted-foreground">وضعیت</th>
-          <th class="px-4 py-3 font-medium text-muted-foreground">آخرین فعالیت</th>
-          <th class="px-4 py-3 font-medium text-muted-foreground">تاریخ ثبت</th>
-          <th class="px-4 py-3 font-medium text-muted-foreground">عملیات</th>
-        </tr>
-      </thead>
-      <tbody>
-        {admins.length === 0 ? (
-          <tr>
-            <td colspan="8" class="h-24 text-center text-muted-foreground">
-              هنوز مدیری ثبت نشده — بدون آن، ربات به هیچ پیامی جواب نمی‌دهد.
-            </td>
-          </tr>
-        ) : (
-          admins.map((admin) => (
-            <tr class="border-t border-border align-top hover:bg-muted/30 transition-colors">
-              <td class="px-4 py-3 font-mono text-xs" dir="ltr">{toPersianDigits(admin.chat_id)}</td>
-              <td class="px-4 py-3 font-medium">{admin.full_name || '—'}</td>
-              <td class="px-4 py-3 text-xs" dir="ltr">
-                {admin.telegram_username ? `@${admin.telegram_username}` : '—'}
-              </td>
-              <td class="px-4 py-3 text-xs">{roleLabels[admin.role] || admin.role}</td>
-              <td class="px-4 py-3">
-                <span class={admin.is_active ? okBadge : neutralBadge}>
-                  {admin.is_active ? 'فعال' : 'غیرفعال'}
-                </span>
-              </td>
-              <td class="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                {admin.last_command_at ? (
-                  <>
-                    {formatPersianDate(admin.last_command_at)}
-                    <div class="opacity-70">{formatPersianTime(admin.last_command_at)}</div>
-                  </>
-                ) : (
-                  '—'
-                )}
-              </td>
-              <td class="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                {admin.created_at ? (
-                  <>
-                    {formatPersianDate(admin.created_at)}
-                    <div class="opacity-70">{formatPersianTime(admin.created_at)}</div>
-                  </>
-                ) : (
-                  '—'
-                )}
-              </td>
-              <td class="px-4 py-3">
-                <div class="flex flex-col gap-2">
-                  <form method="post" action="/admin/bot/action" class="inline">
-                    <input type="hidden" name="chat_id" value={admin.chat_id} />
-                    <input type="hidden" name="action" value="toggle" />
-                    <button
-                      type="submit"
-                      class="rounded border border-border px-2 py-1 text-xs hover:bg-muted transition-colors"
-                    >
-                      {admin.is_active ? 'غیرفعال‌سازی' : 'فعال‌سازی'}
-                    </button>
-                  </form>
-                  <form
-                    method="post"
-                    action="/admin/bot/action"
-                    class="inline"
-                    onsubmit="return confirm('این مدیر از فهرست ربات حذف شود؟')"
-                  >
-                    <input type="hidden" name="chat_id" value={admin.chat_id} />
-                    <input type="hidden" name="action" value="remove" />
-                    <button
-                      type="submit"
-                      class="rounded border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950 transition-colors"
-                    >
-                      حذف
-                    </button>
-                  </form>
-                </div>
-              </td>
-            </tr>
-          ))
-        )}
-      </tbody>
-    </table>
-  </div>
-
-  <p class="mt-3 text-xs text-muted-foreground">
-    مدیران فهرست بالا همان کسانی‌اند که ربات تلگرام به پیام‌هایشان جواب می‌دهد؛ غیرفعال کردن یک ردیف
-    بدون حذف، دسترسی او را بلافاصله قطع می‌کند.
-  </p>
 </Layout>

@@ -277,52 +277,25 @@ const secondaryBtn =
       </div>
     </div>
 
-    <form method="post" action="/admin/settings/action" class="mb-6 border-b border-border pb-6">
-      <input type="hidden" name="action" value="bot_token" />
-      <div class="grid gap-4 sm:grid-cols-2">
+    <div class="mb-6 rounded-lg border border-amber-300 dark:border-amber-900/60 bg-gradient-to-l from-amber-500/10 via-card to-card p-4 sm:p-5">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <label class={fieldLabel} for="bot_token">توکن ربات</label>
-          <input
-            id="bot_token"
-            name="bot_token"
-            type="password"
-            autocomplete="new-password"
-            placeholder="…"
-            dir="ltr"
-            maxlength="512"
-            class={fieldInput}
-          />
-          <p class="mt-1 text-[11px] text-muted-foreground">
-            خالی بگذارید تا مقدار فعلی حفظ شود. مقدار ذخیره‌شده هرگز نمایش داده نمی‌شود.
+          <h3 class="text-sm font-bold text-foreground flex items-center gap-2">
+            <span>🤖</span>
+            <span>تنظیمات و راه‌اندازی ربات تلگرام</span>
+          </h3>
+          <p class="text-xs text-muted-foreground mt-1 leading-relaxed">
+            کلیه تنظیمات، فیلدهای دریافت توکن، شناسه چت و اتصال ۱ کلیکه ربات به صورت یکپارچه در بخش اختصاصی <b>«ربات تلگرام»</b> قرار گرفته است.
           </p>
         </div>
-        <div class="flex items-end gap-3">
-          <button type="submit" class={primaryBtn}>ذخیرهٔ توکن</button>
-        </div>
+        <a
+          href="/admin/bot"
+          class="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-colors"
+        >
+          <span>ورود به صفحه ربات تلگرام</span>
+          <span>←</span>
+        </a>
       </div>
-    </form>
-
-    <div class="mb-6 border-b border-border pb-6">
-      <div class="flex flex-wrap items-end gap-3">
-        <form method="post" action="/admin/settings/action">
-          <input type="hidden" name="action" value="rotate_secret" />
-          <button
-            type="submit"
-            class={secondaryBtn}
-            onclick="return confirm('کلید جدید وب‌هوک تولید شود؟ کلید قبلی باطل و ربات باید دوباره متصل شود.')"
-          >
-            تولید کلید جدید
-          </button>
-        </form>
-        <form method="post" action="/admin/settings/action">
-          <input type="hidden" name="action" value="connect" />
-          <button type="submit" class={primaryBtn}>اتصال وب‌هوک</button>
-        </form>
-      </div>
-      <p class="mt-2 text-xs text-muted-foreground">
-        کلید وب‌هوک به‌صورت سروری و تصادفی (۶۴ کاراکتر هگز) ساخته می‌شود و دیگر قابل بازخوانی نیست.
-        با ذخیرهٔ هر دو مقدار، وب‌هوک خودکار ثبت می‌شود.
-      </p>
     </div>
 
     <h3 class="mb-3 text-sm font-bold">وضعیت زنده</h3>
