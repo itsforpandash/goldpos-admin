@@ -18,51 +18,88 @@ import '@/styles/globals.css'
     </script>
   </head>
   <body class="min-h-screen bg-gradient-to-br from-slate-50 to-sky-50 dark:from-slate-900 dark:to-slate-800">
-    <div class="min-h-screen flex flex-col items-center justify-center p-8 text-center">
-      <div class="space-y-6 max-w-lg">
-        <div class="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-400 flex items-center justify-center shadow-lg">
-          <span class="text-white text-4xl font-bold">G</span>
+    <div class="min-h-screen flex flex-col items-center justify-center p-6 sm:p-8 text-center">
+      <div class="space-y-6 max-w-5xl w-full">
+        <div class="w-20 h-20 sm:w-24 sm:h-24 mx-auto rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-400 flex items-center justify-center shadow-lg shadow-amber-500/20">
+          <span class="text-white text-3xl sm:text-4xl font-bold">👑</span>
         </div>
 
-        <h1 class="text-3xl sm:text-4xl font-bold text-slate-800 dark:text-white">
+        <h1 class="text-3xl sm:text-4xl font-black text-slate-800 dark:text-white tracking-tight">
           GoldPos Admin
         </h1>
 
-        <p class="text-lg text-slate-600 dark:text-slate-300">
-          پنل مدیریت اشتراک، لایسنس و دستگاه‌ها
+        <p class="text-base sm:text-lg text-slate-600 dark:text-slate-300 max-w-xl mx-auto leading-relaxed">
+          سامانه جامع مدیریت هوشمند طلا و جواهر، لایسنس، دستگاه‌ها و ربات شیشه‌ای تلگرام
         </p>
 
-        <div class="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+        <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center pt-2">
           <a href="/admin/login"
-             class="inline-flex items-center justify-center gap-2 px-8 py-3 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium transition-colors shadow-md">
+             class="inline-flex items-center justify-center gap-2 px-7 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors shadow-md">
             ورود به پنل مدیریت
           </a>
+          <a href="/signup"
+             class="inline-flex items-center justify-center gap-2 px-7 py-3 bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-lg font-medium transition-colors shadow-md">
+            درخواست ثبت‌نام و اشتراک
+          </a>
           <a href="#features"
-             class="inline-flex items-center justify-center gap-2 px-8 py-3 border-2 border-slate-300 dark:border-slate-600 hover:border-sky-500 text-slate-700 dark:text-slate-200 rounded-lg font-medium transition-colors">
-            قابلیت‌ها
+             class="inline-flex items-center justify-center gap-2 px-7 py-3 border-2 border-slate-300 dark:border-slate-600 hover:border-amber-500 text-slate-700 dark:text-slate-200 rounded-lg font-medium transition-colors">
+            مشاهده قابلیت‌ها
           </a>
         </div>
 
-        <div id="features" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-12 text-right">
-          <div class="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <div class="text-2xl mb-2">💳</div>
-            <h3 class="font-semibold text-slate-800 dark:text-white mb-1">مدیریت پلن‌ها</h3>
-            <p class="text-sm text-slate-600 dark:text-slate-400">Free تا Enterprise با تنظیم تعداد دستگاه و مدت</p>
+        <!-- Features Grid -->
+        <div id="features" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mt-12 text-right">
+          <div class="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-700 transition-colors">
+            <div class="text-3xl mb-2.5">🤖</div>
+            <h3 class="font-bold text-slate-900 dark:text-white mb-1.5 text-base">ربات تلگرام با کلیدهای شیشه‌ای</h3>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              منوی شیشه‌ای ۲ ستونه منظم، دستورات هوشمند، استعلام آمار، ویزارد مرحله‌ای و عملکرد روان بدون درهم‌ریختگی.
+            </p>
           </div>
-          <div class="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <div class="text-2xl mb-2">🔑</div>
-            <h3 class="font-semibold text-slate-800 dark:text-white mb-1">لایسنس‌ها</h3>
-            <p class="text-sm text-slate-600 dark:text-slate-400">تولید، فعال‌سازی، تمدید و لغو لایسنس</p>
+
+          <div class="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-700 transition-colors">
+            <div class="text-3xl mb-2.5">🔔</div>
+            <h3 class="font-bold text-slate-900 dark:text-white mb-1.5 text-base">ناتیفیکیشن آنی ثبت‌نام</h3>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              ارسال لحظه‌ای درخواست‌های اشتراک مشتریان به تلگرام مدیران با دکمه‌های شیشه‌ای تایید و صدور خودکار لایسنس.
+            </p>
           </div>
-          <div class="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <div class="text-2xl mb-2">📱</div>
-            <h3 class="font-semibold text-slate-800 dark:text-white mb-1">دستگاه‌ها</h3>
-            <p class="text-sm text-slate-600 dark:text-slate-400">کنترل فعال‌سازی و ریست دستگاه‌های کاربران</p>
+
+          <div class="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-700 transition-colors">
+            <div class="text-3xl mb-2.5">👑</div>
+            <h3 class="font-bold text-slate-900 dark:text-white mb-1.5 text-base">مدیریت لایسنس و اشتراک‌ها</h3>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              صدور لایسنس مرحله‌ای، تمدید، ابطال، مدیریت پلن‌ها و کنترل دقیق سقف دستگاه‌های همزمان.
+            </p>
+          </div>
+
+          <div class="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-700 transition-colors">
+            <div class="text-3xl mb-2.5">🏛</div>
+            <h3 class="font-bold text-slate-900 dark:text-white mb-1.5 text-base">مدیریت گالری‌های طلا</h3>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              ثبت مشخصات گالری، نام مالک، شماره تماس و نشانی فروشگاه جهت چاپ در سربرگ رسمی فاکتورها.
+            </p>
+          </div>
+
+          <div class="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-700 transition-colors">
+            <div class="text-3xl mb-2.5">🛡</div>
+            <h3 class="font-bold text-slate-900 dark:text-white mb-1.5 text-base">آنتی‌تمپرینگ و مهلت آفلاین</h3>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              محافظت در برابر تغییر ساعت سیستم، توکن امنیتی، بررسی سخت‌افزار تبلت و مهلت آفلاین ۷ روزه.
+            </p>
+          </div>
+
+          <div class="p-5 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-700 transition-colors">
+            <div class="text-3xl mb-2.5">💾</div>
+            <h3 class="font-bold text-slate-900 dark:text-white mb-1.5 text-base">پشتیبان‌گیری خودکار دیتابیس</h3>
+            <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              استخراج آنی فایل JSON کامل پایگاه‌داده با قابلیت بازیابی در پنل وب و ارسال مستقیم داخل تلگرام.
+            </p>
           </div>
         </div>
 
-        <p class="text-sm text-slate-500 dark:text-slate-400 pt-8">
-          ساخته‌شده با Astro + shadcn/ui + Cloudflare Workers و D1
+        <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 pt-6">
+          طراحی‌شده برای مدیریت تخصصی گالری‌های طلا، جواهر و نقره
         </p>
       </div>
     </div>
