@@ -50,8 +50,20 @@ export async function POST({ locals, request }) {
 
     await adminService.touchLogin(admin.id);
 
+    // Migration 0009 sets must_change_password on every existing admin: the
+    // bootstrap password shipped in migration 0007 is public and therefore burned.
+    // We still issue a valid session — otherwise the holder could never reach
+    // /admin/change-password to set a new one — but the response states the
+    // forced-change state explicitly so the client redirects instead of assuming
+    // full access. The client (login page) honours this; the server-side gate that
+    // blocks other admin routes lives in src/middleware.ts.
+    const mustChangePassword = !!admin.must_change_password;
+
     const response = Response.json({
       success: true,
+      must_change_password: mustChangePassword,
+      // Convenience for the client: where to send a user that still owes a change.
+      change_password_url: mustChangePassword ? "/admin/change-password" : null,
       admin: {
         id: admin.id,
         username: admin.username,

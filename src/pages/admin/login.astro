@@ -22,8 +22,12 @@ if (sessionValid) {
       document.documentElement.classList[getThemePreference() === 'dark' ? 'add' : 'remove']('dark');
     </script>
     <style>
-      @import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Regular.woff2') format('woff2');
-      * { font-family: 'Vazirmatn', system-ui, sans-serif; }
+      /* @import url(...) format('woff2') is invalid CSS (format() only belongs
+         in @font-face src), so browsers dropped it and Vazirmatn never loaded. */
+      @font-face { font-family: 'Vazirmatn'; src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+      @font-face { font-family: 'Vazirmatn'; src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Medium.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
+      @font-face { font-family: 'Vazirmatn'; src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
+      * { font-family: 'Vazirmatn', system-ui, sans-serif; box-sizing: border-box; }
       :root {
         --background: 0 0% 100%;
         --foreground: 0 0% 7%;
@@ -99,6 +103,12 @@ if (sessionValid) {
       .btn-gp:hover { opacity: 0.9; }
       .btn-gp:disabled { opacity: 0.5; cursor: not-allowed; }
       .error-msg { color: #ef4444; font-size: 0.8rem; min-height: 1.2em; text-align: right; }
+      @media (max-width: 640px) {
+        /* 16px fields stop iOS Safari's zoom-on-focus; 44px = comfortable tap target. */
+        .input-gp { font-size: 16px; min-height: 44px; }
+        .btn-gp { min-height: 44px; }
+        body { padding: 1rem 0.75rem; }
+      }
     </style>
   </head>
   <body>

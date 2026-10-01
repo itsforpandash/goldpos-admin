@@ -4,53 +4,8 @@ import Sidebar from '@/components/Sidebar.astro';
 import { Button } from '@/components/ui/button';
 import { LogOut, Menu } from 'lucide-react';
 
-const currentPath = Astro.url.pathname;
 const title = Astro.props.title || 'داشبورد';
-const { API_TOKEN } = Astro.locals.runtime.env;
-const apiTokenSet = API_TOKEN && API_TOKEN !== '';
 ---
-
-<script is:inline>
-  // Theme management (light/dark/system)
-  const getThemePreference = () => {
-    if (typeof localStorage !== 'undefined' && localStorage.getItem('theme')) {
-      return localStorage.getItem('theme');
-    }
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  };
-  const isDark = getThemePreference() === 'dark';
-  document.documentElement.classList[isDark ? 'add' : 'remove']('dark');
-
-  if (typeof localStorage !== 'undefined') {
-    const observer = new MutationObserver(() => {
-      const isDark = document.documentElement.classList.contains('dark');
-      localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-  }
-
-  // Mobile sidebar toggle
-  const appRoot = document.getElementById('app-root');
-  const mobileSidebar = document.getElementById('mobile-sidebar');
-  const overlay = document.getElementById('sidebar-overlay');
-  const menuBtn = document.getElementById('menu-btn');
-
-  function toggleSidebar() {
-    const isOpen = !mobileSidebar.classList.contains('-translate-x-full');
-    mobileSidebar.classList.toggle('-translate-x-full', isOpen);
-    overlay.classList.toggle('hidden', !isOpen);
-  }
-
-  menuBtn?.addEventListener('click', toggleSidebar);
-  overlay?.addEventListener('click', toggleSidebar);
-
-  // PWA service worker registration
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('SW registration failed:', err));
-    });
-  }
-</script>
 
 <!doctype html>
 <html lang="fa" dir="rtl">
@@ -62,51 +17,89 @@ const apiTokenSet = API_TOKEN && API_TOKEN !== '';
     <meta name="generator" content={Astro.generator} />
     <meta name="theme-color" content="#0ea5e9" />
     <title>{title ? `${title} - GoldPos` : 'GoldPos Admin'}</title>
+    <script is:inline>
+      // Theme bootstrap — must only touch <html> because it runs before <body>.
+      (function () {
+        var stored = null;
+        try { stored = localStorage.getItem('theme'); } catch (e) {}
+        var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var theme = stored || (prefersDark ? 'dark' : 'light');
+        document.documentElement.classList[theme === 'dark' ? 'add' : 'remove']('dark');
+        try {
+          var observer = new MutationObserver(function () {
+            try {
+              localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+            } catch (e) {}
+          });
+          observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body class="bg-background text-foreground min-h-screen">
     <div class="flex h-[100dvh] overflow-hidden" id="app-root">
-      <!-- Desktop Sidebar -->
+      <!-- Desktop Sidebar (>=1024px) -->
       <aside class="hidden lg:flex flex-shrink-0 w-64 flex-col border-l border-border bg-card">
         <Sidebar />
       </aside>
 
-      <!-- Mobile Overlay -->
-      <div id="sidebar-overlay" class="hidden fixed inset-0 bg-black/50 z-30 lg:hidden"></div>
+      <!-- Mobile drawer backdrop -->
+      <div id="sidebar-overlay" class="hidden fixed inset-0 bg-black/50 z-30 lg:hidden" aria-hidden="true"></div>
 
-      <!-- Mobile Sidebar Drawer (right-side for RTL) -->
+      <!-- Mobile drawer: right-anchored (RTL start side), hidden via #mobile-sidebar transform in globals.css -->
       <aside
         id="mobile-sidebar"
-        class="lg:hidden fixed top-0 right-0 h-full w-72 bg-card border-l border-border shadow-2xl z-40 transition-transform duration-200 -translate-x-full"
+        class="lg:hidden fixed top-0 right-0 h-full w-72 max-w-[85vw] overflow-y-auto bg-card border-l border-border shadow-2xl z-40 transition-transform duration-200"
+        aria-label="منوی پنل"
+        aria-hidden="true"
+        inert
       >
         <Sidebar />
       </aside>
 
-      <!-- Main Content -->
-      <div class="flex-1 flex flex-col overflow-hidden">
-        <!-- Top Header -->
-        <header class="flex items-center justify-between px-4 py-3 bg-card border-b border-border">
-          <div class="flex items-center gap-3">
-            <Button variant="ghost" size="icon" id="menu-btn" class="lg:hidden">
+      <!-- Main content column -->
+      <div class="flex-1 flex flex-col overflow-hidden min-w-0">
+        <!-- Top header: menu button + page title on mobile, brand on desktop -->
+        <header class="flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5 bg-card border-b border-border">
+          <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              id="menu-btn"
+              class="lg:hidden shrink-0 min-h-11 min-w-11"
+              aria-label="باز کردن منو"
+              aria-expanded="false"
+              aria-controls="mobile-sidebar"
+            >
               <Menu class="w-5 h-5" />
             </Button>
-            <span class="text-lg font-bold text-primary hidden sm:block">GoldPos</span>
+            <span class="lg:hidden text-base font-bold truncate">{title}</span>
+            <span class="hidden lg:block text-lg font-bold text-primary">GoldPos</span>
           </div>
-          <div class="flex items-center gap-3">
-            <a href="#" id="theme-toggle" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer">
-              <span class="theme-icon">🌙</span>
+          <div class="flex items-center gap-2 sm:gap-4 shrink-0">
+            <button
+              type="button"
+              id="theme-toggle"
+              class="min-h-11 px-1 flex items-center gap-1 text-xs sm:text-sm text-muted-foreground hover:text-foreground cursor-pointer"
+              aria-label="تغییر تم"
+            >
+              <span class="theme-icon" aria-hidden="true">🌙</span>
               <span class="theme-label">تم تیره</span>
-            </a>
-            <a href="/api/auth/logout" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
+            </button>
+            <a
+              href="/api/auth/logout"
+              class="min-h-11 px-1 flex items-center gap-1 text-xs sm:text-sm text-muted-foreground hover:text-foreground"
+            >
               <LogOut class="w-4 h-4" />
-              خروج
+              <span>خروج</span>
             </a>
           </div>
         </header>
 
-        <!-- Page Content -->
-        <main class="flex-1 overflow-y-auto p-4 lg:p-6">
-          <div class="flex items-center justify-between mb-6 flex-wrap gap-4">
-            <h1 class="text-2xl font-bold tracking-tight">{title}</h1>
+        <!-- Page content -->
+        <main class="flex-1 overflow-y-auto p-4 lg:p-6 min-w-0">
+          <div class="flex items-center justify-between mb-5 sm:mb-6 flex-wrap gap-4">
+            <h1 class="hidden lg:block text-2xl font-bold tracking-tight">{title}</h1>
             <slot name="actions" />
           </div>
           <slot />
@@ -114,16 +107,82 @@ const apiTokenSet = API_TOKEN && API_TOKEN !== '';
       </div>
     </div>
 
-    <script>
-      // Theme toggle button behavior
-      const themeToggle = document.getElementById('theme-toggle');
-      themeToggle?.addEventListener('click', () => {
-        const isDark = document.documentElement.classList.toggle('dark');
-        const icon = document.querySelector('.theme-icon');
-        const label = document.querySelector('.theme-label');
-        if (icon) icon.textContent = isDark ? '☀️' : '🌙';
-        if (label) label.textContent = isDark ? 'تم روشن' : 'تم تیره';
-      });
+    <script is:inline>
+      (function () {
+        var drawer = document.getElementById('mobile-sidebar');
+        var overlay = document.getElementById('sidebar-overlay');
+        var menuBtn = document.getElementById('menu-btn');
+
+        function setDrawer(open) {
+          if (!drawer || !overlay || !menuBtn) return;
+          drawer.classList.toggle('is-open', open);
+          overlay.classList.toggle('hidden', !open);
+          drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+          menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          try { drawer.inert = !open; } catch (e) {}
+          if (open) {
+            var first = drawer.querySelector('a[href], button');
+            if (first && first.focus) first.focus();
+          }
+        }
+
+        function isOpen() {
+          return !!drawer && drawer.classList.contains('is-open');
+        }
+
+        if (menuBtn && drawer && overlay) {
+          menuBtn.addEventListener('click', function () { setDrawer(!isOpen()); });
+          overlay.addEventListener('click', function () { setDrawer(false); });
+
+          document.addEventListener('keydown', function (e) {
+            if ((e.key === 'Escape' || e.key === 'Esc') && isOpen()) {
+              setDrawer(false);
+              menuBtn.focus();
+            }
+          });
+
+          // Close when a nav link inside the drawer is tapped, or when a
+          // close affordance (X) inside the drawer is tapped.
+          drawer.addEventListener('click', function (e) {
+            var target = e.target;
+            if (!target || !target.closest) return;
+            if (target.closest('.js-close-drawer')) {
+              e.preventDefault();
+              setDrawer(false);
+              menuBtn.focus();
+            } else if (target.closest('a[href]')) {
+              setDrawer(false);
+            }
+          });
+
+          // Leaving the mobile breakpoint: reset state so the drawer is
+          // clean if the user rotates/resizes back down.
+          window.addEventListener('resize', function () {
+            if (window.innerWidth >= 1024 && isOpen()) setDrawer(false);
+          });
+        }
+
+        // Theme toggle
+        var themeToggle = document.getElementById('theme-toggle');
+        if (themeToggle) {
+          themeToggle.addEventListener('click', function () {
+            var isDark = document.documentElement.classList.toggle('dark');
+            var icon = document.querySelector('.theme-icon');
+            var label = document.querySelector('.theme-label');
+            if (icon) icon.textContent = isDark ? '☀️' : '🌙';
+            if (label) label.textContent = isDark ? 'تم روشن' : 'تم تیره';
+          });
+        }
+
+        // PWA service worker registration
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', function () {
+            navigator.serviceWorker.register('/sw.js').catch(function (err) {
+              console.warn('SW registration failed:', err);
+            });
+          });
+        }
+      })();
     </script>
   </body>
 </html>

@@ -1,0 +1,332 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import Flash from '@/components/admin/flash.astro';
+import { SignupService } from '@/lib/services/signup';
+import { toPersianDigits, formatPersianDate, formatPersianTime } from '@/lib/i18n';
+
+const { DB } = Astro.locals.runtime.env;
+const signupService = new SignupService(DB);
+
+const ok = Astro.url.searchParams.get('ok');
+const err = Astro.url.searchParams.get('err');
+// License code handed back by the approve action so the admin can copy & send it.
+const issuedCode = Astro.url.searchParams.get('code');
+const issuedPlan = Astro.url.searchParams.get('plan');
+const issuedUser = Astro.url.searchParams.get('user');
+const issuedCreated = Astro.url.searchParams.get('created') === '1';
+const errDetail = Astro.url.searchParams.get('msg');
+
+// Messages that need a specific wording (Flash only has a generic fallback).
+const localOkMessages = {
+  rejected: 'درخواست رد شد.',
+};
+
+// Route anything Flash cannot word well to our own banner; reuse Flash otherwise.
+const flashOk = ok && !(ok.startsWith('approved') && issuedCode) && !localOkMessages[ok] ? ok : null;
+const flashErr = err && !errDetail ? err : null;
+const localOk = ok && localOkMessages[ok] ? localOkMessages[ok] : null;
+
+const status = Astro.url.searchParams.get('status');
+const search = Astro.url.searchParams.get('q');
+
+const [requests, counts, plans] = await Promise.all([
+  signupService.getAll(status, search),
+  signupService.getCounts(),
+  signupService.getPublicPlans(),
+]);
+
+const statusLabel = {
+  pending: 'در انتظار بررسی',
+  approved: 'تأیید شده',
+  rejected: 'رد شده',
+};
+
+const statusFilter = (value) => {
+  const params = new URLSearchParams();
+  if (search) params.set('q', search);
+  if (value) params.set('status', value);
+  const qs = params.toString();
+  return `/admin/signup${qs ? `?${qs}` : ''}`;
+};
+---
+
+<Layout title="درخواست‌های ثبت‌نام">
+  <Flash ok={flashOk} err={flashErr} />
+
+  {localOk && (
+    <div class="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-300" role="alert">
+      {localOk}
+    </div>
+  )}
+
+  {err && errDetail && (
+    <div class="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300" role="alert">
+      {errDetail}
+    </div>
+  )}
+
+  {issuedCode && (
+    <div class="mb-6 rounded-md border border-green-300 bg-green-50 p-4 dark:border-green-800 dark:bg-green-950">
+      <div class="text-sm font-bold text-green-900 dark:text-green-200">
+        لایسنس صادر شد — این کد را برای مشتری بفرستید
+      </div>
+      <div class="mt-3 flex flex-wrap items-center gap-3">
+        <code id="issued-code" class="select-all rounded-md border border-green-300 bg-white px-3 py-2 font-mono text-base font-bold tracking-wider text-green-900 dark:border-green-700 dark:bg-gray-900 dark:text-green-100">
+          {issuedCode}
+        </code>
+        <button
+          type="button"
+          id="copy-code"
+          data-code={issuedCode}
+          class="rounded-md border border-green-400 px-3 py-2 text-sm font-medium text-green-800 transition-colors hover:bg-green-100 dark:text-green-200 dark:hover:bg-green-900"
+        >
+          کپی کد
+        </button>
+        <span id="copy-status" class="text-xs text-green-800 dark:text-green-300" aria-live="polite"></span>
+      </div>
+      <dl class="mt-3 grid gap-1 text-xs text-green-900 dark:text-green-300 sm:grid-cols-3">
+        <div><span class="opacity-70">پلن: </span>{issuedPlan || '—'}</div>
+        <div><span class="opacity-70">کاربر: </span>{issuedUser || '—'}{issuedCreated && ' (حساب جدید ساخته شد)'}</div>
+      </dl>
+    </div>
+  )}
+
+  <div class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div class="kpi-card !p-4">
+      <div class="kpi-value">{toPersianDigits(counts.total)}</div>
+      <div class="kpi-label">کل درخواست‌ها</div>
+    </div>
+    <div class="kpi-card !p-4">
+      <div class="kpi-value text-yellow-600">{toPersianDigits(counts.pending)}</div>
+      <div class="kpi-label">در انتظار بررسی</div>
+    </div>
+    <div class="kpi-card !p-4">
+      <div class="kpi-value text-green-600">{toPersianDigits(counts.approved)}</div>
+      <div class="kpi-label">تأیید شده</div>
+    </div>
+    <div class="kpi-card !p-4">
+      <div class="kpi-value text-red-600">{toPersianDigits(counts.rejected)}</div>
+      <div class="kpi-label">رد شده</div>
+    </div>
+  </div>
+
+  <form method="get" action="/admin/signup" class="mb-4 flex flex-wrap items-center gap-2">
+    <div class="min-w-48 flex-1">
+      <label class="sr-only" for="q">جستجو</label>
+      <input
+        id="q"
+        type="search"
+        name="q"
+        value={search || ''}
+        placeholder="جستجو در ایمیل، موبایل، نام یا توضیحات"
+        class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+      />
+    </div>
+    <div>
+      <label class="sr-only" for="status">وضعیت</label>
+      <select
+        id="status"
+        name="status"
+        class="rounded-md border border-border bg-background px-3 py-2 text-sm"
+        onchange="this.form.submit()"
+      >
+        <option value="" selected={!status}>همه وضعیت‌ها</option>
+        <option value="pending" selected={status === 'pending'}>در انتظار بررسی</option>
+        <option value="approved" selected={status === 'approved'}>تأیید شده</option>
+        <option value="rejected" selected={status === 'rejected'}>رد شده</option>
+      </select>
+    </div>
+    <button type="submit" class="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted transition-colors">
+      جستجو
+    </button>
+    {(search || status) && (
+      <a href={statusFilter('', 'all')} class="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors">
+        حذف فیلتر
+      </a>
+    )}
+  </form>
+
+  <div class="mb-4 flex flex-wrap gap-2 text-xs">
+    <a
+      href={statusFilter('', 'all')}
+      class={`rounded-full border px-3 py-1.5 transition-colors ${!status ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted'}`}
+    >
+      همه ({toPersianDigits(counts.total)})
+    </a>
+    <a
+      href={statusFilter('pending', 'pending')}
+      class={`rounded-full border px-3 py-1.5 transition-colors ${status === 'pending' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted'}`}
+    >
+      در انتظار ({toPersianDigits(counts.pending)})
+    </a>
+    <a
+      href={statusFilter('approved', 'approved')}
+      class={`rounded-full border px-3 py-1.5 transition-colors ${status === 'approved' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted'}`}
+    >
+      تأیید شده ({toPersianDigits(counts.approved)})
+    </a>
+    <a
+      href={statusFilter('rejected', 'rejected')}
+      class={`rounded-full border px-3 py-1.5 transition-colors ${status === 'rejected' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted'}`}
+    >
+      رد شده ({toPersianDigits(counts.rejected)})
+    </a>
+  </div>
+
+  <div class="table-scroll rounded-md border border-border">
+    <table class="w-full min-w-[56rem] text-sm">
+      <thead class="bg-muted/50">
+        <tr class="text-right">
+          <th class="px-4 py-3 font-medium text-muted-foreground">راه ارتباطی</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">نوع</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">نام</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">پلن درخواستی</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">توضیحات</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">زمان ثبت</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">وضعیت</th>
+          <th class="px-4 py-3 font-medium text-muted-foreground">عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {requests.length === 0 ? (
+          <tr>
+            <td colspan="8" class="h-24 text-center text-muted-foreground">
+              درخواستی یافت نشد.
+            </td>
+          </tr>
+        ) : (
+          requests.map((request) => (
+            <tr class="border-t border-border align-top hover:bg-muted/30 transition-colors">
+              <td class="px-4 py-3">
+                <div class="font-mono text-xs" dir="ltr">{request.contact}</div>
+                {request.license_code && (
+                  <div class="mt-1 font-mono text-xs text-green-600" dir="ltr">{request.license_code}</div>
+                )}
+              </td>
+              <td class="px-4 py-3 text-xs text-muted-foreground">
+                {request.contact_type === 'phone' ? 'موبایل' : 'ایمیل'}
+              </td>
+              <td class="px-4 py-3 font-medium">{request.full_name || '—'}</td>
+              <td class="px-4 py-3 text-xs">
+                {request.plan_name ? (
+                  <>
+                    {request.plan_name}
+                    <div class="text-muted-foreground">
+                      {toPersianDigits(request.plan_duration_days ?? 0)} روز — {toPersianDigits(request.plan_max_devices ?? 0)} دستگاه
+                    </div>
+                  </>
+                ) : (
+                  <span class="text-muted-foreground">انتخاب نشده</span>
+                )}
+              </td>
+              <td class="max-w-56 px-4 py-3 text-xs text-muted-foreground">
+                <div class="break-words">{request.note || '—'}</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                {formatPersianDate(request.created_at)}
+                <div class="opacity-70">{formatPersianTime(request.created_at)}</div>
+              </td>
+              <td class="px-4 py-3">
+                <span class={`whitespace-nowrap rounded-full px-2 py-1 text-xs ${
+                  request.status === 'approved' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                  request.status === 'rejected' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                  'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                }`}>
+                  {statusLabel[request.status] || request.status}
+                </span>
+                {request.reviewed_at && (
+                  <div class="mt-1 text-[11px] text-muted-foreground">
+                    {formatPersianDate(request.reviewed_at)} — {request.reviewer_name || request.reviewer_username || '—'}
+                  </div>
+                )}
+              </td>
+              <td class="px-4 py-3">
+                {request.status === 'pending' ? (
+                  <div class="flex flex-col gap-2">
+                    <form method="post" action="/admin/signup/action" class="flex flex-wrap items-end gap-2">
+                      <input type="hidden" name="id" value={request.id} />
+                      <input type="hidden" name="action" value="approve" />
+                      <div>
+                        <label class="mb-1 block text-[11px] text-muted-foreground" for={`plan-${request.id}`}>پلن</label>
+                        <select
+                          id={`plan-${request.id}`}
+                          name="plan_id"
+                          class="rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                        >
+                          {!request.plan_id && <option value="">— پیش‌فرض —</option>}
+                          {plans.map((p) => (
+                            <option value={p.id} selected={request.plan_id === p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {request.contact_type === 'email' && (
+                        <div>
+                          <label class="mb-1 block text-[11px] text-muted-foreground" for={`phone-${request.id}`}>
+                            موبایل مشتری *
+                          </label>
+                          <input
+                            id={`phone-${request.id}`}
+                            name="user_phone"
+                            type="tel"
+                            dir="ltr"
+                            placeholder="09121234567"
+                            class="w-32 rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                          />
+                        </div>
+                      )}
+                      <button type="submit" class="rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                        تأیید و صدور لایسنس
+                      </button>
+                    </form>
+                    <form
+                      method="post"
+                      action="/admin/signup/action"
+                      class="inline"
+                      onsubmit="return confirm('این درخواست رد شود؟ این عمل قابل بازگشت نیست.')"
+                    >
+                      <input type="hidden" name="id" value={request.id} />
+                      <input type="hidden" name="action" value="reject" />
+                      <button type="submit" class="rounded-md border border-red-300 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950 transition-colors">
+                        رد درخواست
+                      </button>
+                    </form>
+                  </div>
+                ) : (
+                  <span class="text-xs text-muted-foreground">بررسی شده</span>
+                )}
+              </td>
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="mt-3 text-xs text-muted-foreground">
+    برای درخواست‌هایی که فقط ایمیل دارند و کاربر متناظرشان وجود ندارد، شماره موبایل واقعی
+    مشتری را در کنار دکمه تأیید وارد کنید تا حساب کاربری ساخته و لایسنس صادر شود.
+  </p>
+</Layout>
+
+<script>
+  const copyBtn = document.getElementById('copy-code');
+  const copyStatus = document.getElementById('copy-status');
+  copyBtn?.addEventListener('click', async () => {
+    const code = copyBtn.getAttribute('data-code') || '';
+    try {
+      await navigator.clipboard.writeText(code);
+      copyStatus.textContent = 'کپی شد ✓';
+    } catch {
+      const node = document.getElementById('issued-code');
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      copyStatus.textContent = 'کد انتخاب شد — کپی کنید (Ctrl+C)';
+    }
+    setTimeout(() => { copyStatus.textContent = ''; }, 4000);
+  });
+</script>

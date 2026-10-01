@@ -1,1 +1,20 @@
-API_TOKEN=goldpos-token-change-in-production
+# GoldPos local development secrets.
+# Copy to .dev.vars (gitignored) and fill in real values.
+#   cp .dev.vars.example .dev.vars
+# Generate a strong value for each with: openssl rand -hex 32
+# Set real values in production with: npx wrangler secret put <NAME>
+
+# SESSION_SECRET — signs the admin panel session cookie (HMAC-SHA256).
+# Server-only: it must NEVER be shipped in the mobile app or any client bundle.
+# Required. At least 32 characters; anything shorter, empty, or a placeholder
+# (anything containing "example_value", "changeme", "insecure", ...) is refused
+# and every admin login is denied until a valid value is set.
+# If this is missing, the Worker logs "FATAL: SESSION_SECRET is not configured"
+# on every request — check it with: npx wrangler tail
+SESSION_SECRET=replace-with-openssl-rand-hex-32
+
+# API_TOKEN — authenticates the mobile app's API requests (X-API-Token).
+# Not used for sessions: it is embedded in the distributed APK, so treat it as
+# semi-public and never reuse it as the session-signing key.
+# Required for the /api/mobile/* endpoints.
+API_TOKEN=replace-with-openssl-rand-hex-32

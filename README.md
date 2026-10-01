@@ -77,7 +77,10 @@ npm install
 
 # ۲. متغیرهای محیطی
 cp .dev.vars.example .dev.vars
-# داخل .dev.vars مقدار API_TOKEN را ست کنید
+# داخل .dev.vars دو مقدار مجزا ست کنید (پایین توضیح داده شده):
+#   SESSION_SECRET  — امضای session پنل مدیریت (فقط روی سرور)
+#   API_TOKEN       — احراز هویت اپ موبایل (داخل APK قرار می‌گیرد)
+# هر دو با: openssl rand -hex 32
 
 # ۳. اجرای migrationها (لوکال)
 npm run db:migrate
@@ -99,8 +102,35 @@ npx wrangler d1 create admin-db   # یک‌بار، آدرس database_id را د
 npm run build
 npm run deploy
 npm run db:migrate:remote         # apply migrationها روی D1
+npx wrangler secret put SESSION_SECRET   # امضای session پنل مدیریت
+npx wrangler secret put API_TOKEN        # توکن API موبایل
+```
+
+## Secretها (الزامی و مستقل از یکدیگر)
+
+| متغیر | کاربرد | کجا می‌ماند |
+|-------|--------|-------------|
+| `SESSION_SECRET` | امضای cookie نشست پنل مدیریت (HMAC-SHA256) | فقط روی سرور — هرگز داخل اپ موبایل |
+| `API_TOKEN` | احراز هویت درخواست‌های اپ موبایل (`X-API-Token`) | داخل APK توزیع‌شده |
+
+این دو **نباید** یکی باشند. `API_TOKEN` داخل باینری APK قرار می‌گیرد و ذاتاً نیمه‌عمومی است؛ اگر همان کلید برای امضای session استفاده شود، هر کسی که APK را باز کند می‌تواند session با نقش `super_admin` جعل کند. به همین دلیل `getEnvSecret` فقط و فقط `SESSION_SECRET` را می‌خواند و هیچ fallbackای به `API_TOKEN` ندارد.
+
+```bash
+# ساخت مقدار قوی
+openssl rand -hex 32
+
+# تنظیم روی Worker
+npx wrangler secret put SESSION_SECRET
 npx wrangler secret put API_TOKEN
 ```
+
+`SESSION_SECRET` حداقل ۳۲ کاراکتر و غیرplaceholder لازم دارد (مقادیر خالی، کوتاه، یا شامل `example_value` / `changeme` / `insecure` رد می‌شوند). اگر تنظیم نشده باشد، **هیچ sessionای معتبر نمی‌شود** و در هر درخواست این خط لاگ می‌شود:
+
+```
+FATAL: SESSION_SECRET is not configured (missing): ...
+```
+
+برای دیدن آن: `npx wrangler tail`.
 
 ## معماری
 
@@ -122,6 +152,7 @@ npx wrangler secret put API_TOKEN
 - hash عبور با PBKDF2 (۱۰۰k iteration, SHA-256)
 - audit logging تمام عملیات حساس
 - جلوگیری از قرار دادن secret در frontend
+- `SESSION_SECRET` و `API_TOKEN` کاملاً مستقل‌اند؛ `getEnvSecret` هیچ secret پیش‌فرض یا hardcoded ندارد و در نبود `SESSION_SECRET` هیچ sessionای معتبر نمی‌شود (fail closed)
 
 ## نکات تکمیلی / TODO
 

@@ -1,0 +1,492 @@
+---
+// Public signup page — NO auth, NO session, NO admin data.
+// Reads the plans list (name/price/duration) only: public marketing info.
+import { SignupService } from '@/lib/services/signup';
+import { toPersianDigits } from '@/lib/i18n';
+
+const { DB } = Astro.locals.runtime.env;
+// TURNSTILE_SITE_KEY is an optional public var; absent from the generated Env
+// type because wrangler.jsonc is owned elsewhere.
+const rawSiteKey = (Astro.locals.runtime.env as Record<string, unknown>).TURNSTILE_SITE_KEY;
+const TURNSTILE_SITE_KEY = typeof rawSiteKey === "string" ? rawSiteKey : '';
+const signupService = new SignupService(DB);
+const plans = await signupService.getPublicPlans();
+const siteKey = TURNSTILE_SITE_KEY && TURNSTILE_SITE_KEY !== '' ? TURNSTILE_SITE_KEY : '';
+
+const priceFmt = new Intl.NumberFormat('fa-IR');
+
+function priceLabel(price, currency) {
+  if (!price || price <= 0) return 'رایگان';
+  return `${priceFmt.format(price)} ${currency === 'IRR' ? 'تومان' : currency}`;
+}
+---
+
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>درخواست فعال‌سازی - GoldPos</title>
+    <meta
+      name="description"
+      content="برای فعال‌سازی نرم‌افزار صندوق فروشگاهی GoldPos درخواست خود را ثبت کنید. با ایمیل یا شماره موبایل."
+    />
+    <script is:inline>
+      const t = () => (localStorage && localStorage.getItem('theme')) || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.classList[t() === 'dark' ? 'add' : 'remove']('dark');
+    </script>
+    <style>
+      /* Vazirmatn — these used to be @import url(...) format('woff2'), which is
+         invalid CSS (format() belongs in @font-face src) so browsers dropped it. */
+      @font-face { font-family: 'Vazirmatn'; src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+      @font-face { font-family: 'Vazirmatn'; src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Medium.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
+      @font-face { font-family: 'Vazirmatn'; src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
+
+      * { font-family: 'Vazirmatn', system-ui, sans-serif; box-sizing: border-box; }
+
+      :root {
+        --background: 0 0% 100%;
+        --foreground: 0 0% 9%;
+        --muted: 0 0% 96%;
+        --muted-foreground: 0 0% 42%;
+        --border: 0 0% 88%;
+        --primary: 199 89% 42%;
+        --primary-foreground: 0 0% 100%;
+        --danger: 0 72% 45%;
+        --success: 145 63% 30%;
+      }
+      .dark:root {
+        --background: 222 20% 9%;
+        --foreground: 0 0% 96%;
+        --muted: 222 16% 16%;
+        --muted-foreground: 0 0% 68%;
+        --border: 222 16% 22%;
+        --primary: 199 89% 52%;
+        --primary-foreground: 222 20% 9%;
+        --danger: 0 80% 68%;
+        --success: 145 60% 60%;
+      }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+      }
+      body {
+        min-height: 100dvh;
+        /* Never a horizontal scrollbar at 320-375px: allow shrink, no min-width. */
+        overflow-x: hidden;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1.25rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
+      }
+
+      .wrap { width: 100%; max-width: 26rem; }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+        margin-bottom: 1.25rem;
+      }
+      .brand-mark {
+        width: 2.5rem; height: 2.5rem;
+        border-radius: 0.75rem;
+        background: hsl(var(--primary));
+        color: #fff;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 800; font-size: 1.125rem;
+        flex-shrink: 0;
+      }
+      .brand-name { font-weight: 700; font-size: 0.95rem; }
+      .brand-sub { font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
+
+      .card {
+        background: hsl(var(--background));
+        border: 1px solid hsl(var(--border));
+        border-radius: 1rem;
+        padding: 1.5rem 1.25rem;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 24px -12px rgba(0, 0, 0, 0.18);
+      }
+
+      h1 { font-size: 1.3rem; font-weight: 800; margin: 0 0 0.375rem; line-height: 1.7; }
+      .lede { font-size: 0.875rem; line-height: 1.9; color: hsl(var(--muted-foreground)); margin: 0 0 1.5rem; }
+
+      form { display: flex; flex-direction: column; gap: 1.125rem; }
+      .field { display: flex; flex-direction: column; gap: 0.375rem; }
+      label { font-size: 0.8125rem; font-weight: 700; }
+      .hint { font-size: 0.75rem; line-height: 1.7; color: hsl(var(--muted-foreground)); font-weight: 400; }
+      .opt { font-weight: 400; color: hsl(var(--muted-foreground)); }
+
+      input, select, textarea {
+        width: 100%;
+        min-height: 2.75rem;           /* 44px tap target */
+        border: 1px solid hsl(var(--border));
+        border-radius: 0.625rem;
+        padding: 0.625rem 0.75rem;
+        font-size: 1rem;                /* 16px stops iOS zoom-on-focus */
+        line-height: 1.6;
+        background: hsl(var(--muted));
+        color: inherit;
+        outline: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      textarea { min-height: 5.5rem; resize: vertical; }
+      input[type='text'], input[type='email'], input[type='tel'] { direction: ltr; text-align: left; }
+      input:focus, select:focus, textarea:focus {
+        border-color: hsl(var(--primary));
+        box-shadow: 0 0 0 3px hsl(var(--primary) / 0.18);
+      }
+      input[aria-invalid='true'], textarea[aria-invalid='true'] {
+        border-color: hsl(var(--danger));
+      }
+      select { direction: rtl; }
+
+      .error {
+        font-size: 0.8125rem;
+        line-height: 1.7;
+        color: hsl(var(--danger));
+        min-height: 0;
+      }
+      .error:empty { display: none; }
+
+      .btn {
+        width: 100%;
+        min-height: 3rem;              /* 48px — comfortably tappable */
+        border: none;
+        border-radius: 0.75rem;
+        background: hsl(var(--primary));
+        color: hsl(var(--primary-foreground));
+        font-size: 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: opacity 0.15s, transform 0.05s;
+      }
+      .btn:active:not(:disabled) { transform: translateY(1px); }
+      .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+      .banner {
+        border-radius: 0.75rem;
+        padding: 0.875rem 1rem;
+        font-size: 0.875rem;
+        line-height: 1.85;
+        margin-bottom: 1.25rem;
+        border: 1px solid transparent;
+      }
+      .banner.error { background: hsl(var(--danger) / 0.1); border-color: hsl(var(--danger) / 0.4); color: hsl(var(--danger)); }
+
+      .success { text-align: center; padding: 0.5rem 0 0.25rem; }
+      .success-mark {
+        width: 3.5rem; height: 3.5rem;
+        border-radius: 999px;
+        background: hsl(var(--success) / 0.12);
+        color: hsl(var(--success));
+        display: flex; align-items: center; justify-content: center;
+        margin: 0 auto 1rem;
+        font-size: 1.75rem;
+      }
+      .success h1 { margin-bottom: 0.5rem; }
+      .success p { font-size: 0.9375rem; line-height: 2; color: hsl(var(--muted-foreground)); margin: 0 0 1.25rem; }
+      .summary {
+        background: hsl(var(--muted));
+        border: 1px solid hsl(var(--border));
+        border-radius: 0.75rem;
+        padding: 0.875rem 1rem;
+        text-align: right;
+        font-size: 0.8125rem;
+        line-height: 2;
+        margin-bottom: 1.25rem;
+      }
+      .summary div { display: flex; justify-content: space-between; gap: 0.75rem; }
+      .summary span:last-child { font-weight: 700; }
+      .btn-ghost {
+        width: 100%; min-height: 2.75rem;
+        border: 1px solid hsl(var(--border));
+        border-radius: 0.75rem;
+        background: transparent;
+        color: inherit;
+        font-size: 0.875rem; font-weight: 600; cursor: pointer;
+      }
+
+      .plans-strip { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.25rem; }
+      .plans-strip::-webkit-scrollbar { height: 0; }
+
+      footer { margin-top: 1.5rem; text-align: center; font-size: 0.75rem; line-height: 1.9; color: hsl(var(--muted-foreground)); }
+      .noscript {
+        background: hsl(var(--danger) / 0.1);
+        border: 1px solid hsl(var(--danger) / 0.4);
+        color: hsl(var(--danger));
+        border-radius: 0.75rem;
+        padding: 0.875rem 1rem;
+        font-size: 0.875rem;
+        line-height: 1.9;
+        margin-bottom: 1.25rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="brand">
+        <div class="brand-mark">G</div>
+        <div>
+          <div class="brand-name">GoldPos</div>
+          <div class="brand-sub">نرم‌افزار صندوق فروشگاهی</div>
+        </div>
+      </div>
+
+      <main class="card" id="main">
+        {/* ---------------- success state ---------------- */}
+        <section class="success" id="success" hidden>
+          <div class="success-mark" aria-hidden="true">✓</div>
+          <h1>درخواست شما ثبت شد</h1>
+          <p>
+            کارشناسان GoldPos در اولین فرصت کاری با شما تماس می‌گیرند. اگر عجله دارید، شماره تماس پشتیبانی را نگه دارید.
+          </p>
+          <div class="summary" id="success-summary"></div>
+          <button type="button" class="btn-ghost" id="reset-btn">ثبت درخواست دیگر</button>
+        </section>
+
+        {/* ---------------- form state ---------------- */}
+        <section id="form-section">
+          <h1>درخواست فعال‌سازی</h1>
+          <p class="lede">
+            برای شروع کار با GoldPos فرم زیر را پر کنید. کافی است ایمیل یا شماره موبایلی که
+            در دسترس شماست را بنویسید.
+          </p>
+
+          <noscript>
+            <div class="noscript">
+              برای ثبت درخواست، جاوااسکریپت مرورگر شما باید روشن باشد. لطفاً جاوااسکریپت را
+              فعال کنید و صفحه را دوباره بارگذاری کنید.
+            </div>
+          </noscript>
+
+          {/* aria-live so screen readers hear the outcome of a submit */}
+          <div class="banner error" id="form-banner" role="alert" aria-live="assertive"></div>
+
+          <form id="signup-form" novalidate>
+            <div class="field">
+              <label for="contact">ایمیل یا شماره موبایل <span aria-hidden="true">*</span></label>
+              <span class="hint" id="contact-hint">
+                هرکدام را دارید وارد کنید؛ مثال: name@example.com یا 09121234567
+              </span>
+              <input
+                id="contact"
+                name="contact"
+                type="text"
+                required
+                autocomplete="email"
+                enterkeyhint="next"
+                inputmode="email"
+                maxlength="254"
+                aria-describedby="contact-hint contact-error"
+                aria-invalid="false"
+              />
+              <span class="error" id="contact-error" role="alert" aria-live="polite"></span>
+            </div>
+
+            <div class="field">
+              <label for="fullName">نام و نام خانوادگی <span class="opt">(اختیاری)</span></label>
+              <input
+                id="fullName"
+                name="fullName"
+                type="text"
+                autocomplete="name"
+                enterkeyhint="next"
+                maxlength="120"
+              />
+            </div>
+
+            <div class="field">
+              <label for="planId">پلن مورد نظر <span class="opt">(اختیاری)</span></label>
+              <span class="hint" id="plan-hint">اگر مطمئن نیستید، خالی بگذارید تا با شما مشورت کنیم.</span>
+              <select id="planId" name="planId" aria-describedby="plan-hint">
+                <option value="">— انتخاب نکنید —</option>
+                {plans.map((p) => (
+                  <option value={p.id}>
+                    {p.name} — {priceLabel(p.price, p.currency)} — {toPersianDigits(p.duration_days)} روز
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="note">توضیحات <span class="opt">(اختیاری)</span></label>
+              <span class="hint" id="note-hint">مثلاً نام فروشگاه، تعداد صندوق‌ها یا پلنی که مدنظر دارید.</span>
+              <textarea
+                id="note"
+                name="note"
+                maxlength="1000"
+                aria-describedby="note-hint"
+              ></textarea>
+            </div>
+
+            {siteKey && <div id="turnstile" class="field" style="min-height:65px"></div>}
+            <input type="hidden" name="turnstileToken" id="turnstileToken" value="" />
+
+            <button type="submit" class="btn" id="submit-btn">ثبت درخواست</button>
+          </form>
+        </section>
+      </main>
+
+      <footer>
+        اطلاعات شما فقط برای تماس کارشناسان GoldPos استفاده می‌شود.
+      </footer>
+    </div>
+
+    {siteKey && (
+      <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    )}
+
+    <script define:vars={{ siteKey }}>
+      const form = document.getElementById('signup-form');
+      const banner = document.getElementById('form-banner');
+      const submitBtn = document.getElementById('submit-btn');
+      const contactInput = document.getElementById('contact');
+      const contactError = document.getElementById('contact-error');
+      const planSelect = document.getElementById('planId');
+      const tokenInput = document.getElementById('turnstileToken');
+      const formSection = document.getElementById('form-section');
+      const successSection = document.getElementById('success');
+      const successSummary = document.getElementById('success-summary');
+      const resetBtn = document.getElementById('reset-btn');
+
+      /* --- client-side mirror of the server rules (server is authority) --- */
+      const EMAIL_RE = /^[a-z][a-z0-9!#$%&'*+/=?^_`{|}~-]*(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
+      const PHONE_RE = /^(?:\+98|0098|0)(9\d{9})$/;
+
+      function toAsciiDigits(input) {
+        let out = '';
+        for (const ch of String(input ?? '')) {
+          const c = ch.codePointAt(0);
+          if (c >= 0x06f0 && c <= 0x06f9) out += String.fromCodePoint(c - 0x06f0 + 0x30);
+          else if (c >= 0x0660 && c <= 0x0669) out += String.fromCodePoint(c - 0x0660 + 0x30);
+          else out += ch;
+        }
+        return out;
+      }
+
+      function validateContact(raw) {
+        const value = toAsciiDigits(raw).trim();
+        if (!value) return 'لطفاً ایمیل یا شماره موبایل خود را وارد کنید.';
+        if (value.includes('@')) {
+          const email = value.toLowerCase();
+          return EMAIL_RE.test(email) ? null : 'ایمیل واردشده معتبر نیست. نمونه درست: name@example.com';
+        }
+        const phone = value.replace(/[\s\-()._]/g, '');
+        if (PHONE_RE.test(phone)) return null;
+        if (/^[+\-\d()\s._]{6,}$/.test(value)) {
+          return 'شماره موبایل معتبر نیست. نمونه درست: 09121234567 یا +989121234567';
+        }
+        return 'ورودی معتبر نیست. ایمیل (مثل name@example.com) یا شماره موبایل ایرانی (مثل 09121234567) وارد کنید.';
+      }
+
+      function setContactError(message) {
+        contactError.textContent = message || '';
+        contactInput.setAttribute('aria-invalid', message ? 'true' : 'false');
+      }
+
+      function showBanner(message) {
+        banner.textContent = message || '';
+      }
+
+      contactInput.addEventListener('blur', () => setContactError(validateContact(contactInput.value)));
+      contactInput.addEventListener('input', () => {
+        if (contactError.textContent) setContactError(validateContact(contactInput.value));
+      });
+
+      /* --- Turnstile (only when a site key is configured) --- */
+      let widgetId = null;
+      function renderTurnstile() {
+        if (!siteKey || !window.turnstile) return;
+        widgetId = window.turnstile.render('#turnstile', {
+          sitekey: siteKey,
+          callback: (token) => { tokenInput.value = token; },
+          'expired-callback': () => { tokenInput.value = ''; },
+          'error-callback': () => { tokenInput.value = ''; },
+          theme: 'auto',
+        });
+      }
+      function resetTurnstile() {
+        if (!widgetId || !window.turnstile) return;
+        try { window.turnstile.reset(widgetId); } catch (_) {}
+        tokenInput.value = '';
+      }
+      if (siteKey) {
+        // The widget script is async; poll briefly instead of racing it.
+        let tries = 0;
+        const timer = setInterval(() => {
+          if (window.turnstile) { clearInterval(timer); renderTurnstile(); }
+          else if (++tries > 50) clearInterval(timer);
+        }, 100);
+      }
+
+      form.addEventListener('submit', async (event) => {
+        // Never a native submit: the Turnstile token lives in a hidden input and
+        // a native POST can fire before the widget has solved.
+        event.preventDefault();
+        showBanner('');
+        setContactError(validateContact(contactInput.value));
+        if (contactError.textContent) { contactInput.focus(); return; }
+
+        submitBtn.disabled = true;
+        const originalLabel = submitBtn.textContent;
+        submitBtn.textContent = 'در حال ثبت...';
+
+        try {
+          const response = await fetch('/api/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contact: contactInput.value,
+              fullName: document.getElementById('fullName').value,
+              planId: planSelect.value ? Number(planSelect.value) : null,
+              note: document.getElementById('note').value,
+              turnstileToken: tokenInput.value,
+            }),
+          });
+          const data = await response.json().catch(() => ({}));
+
+          if (!response.ok || !data.success) {
+            showBanner(data.message || 'ثبت درخواست ناموفق بود. لطفاً دوباره تلاش کنید.');
+            if (response.status === 400 || response.status === 409) setContactError('');
+            resetTurnstile();
+            return;
+          }
+
+          // Success state — no navigation, form swaps for confirmation.
+          const summary = [];
+          if (contactInput.value.trim()) summary.push(['اطلاعات تماس', contactInput.value.trim()]);
+          if (planSelect.selectedIndex > 0) summary.push(['پلن', planSelect.options[planSelect.selectedIndex].text.trim()]);
+          summary.push(['شماره پیگیری', String(data.id ?? '')]);
+          successSummary.innerHTML = summary
+            .map(([k, v]) => '<div><span>' + k + '</span><span>' + v + '</span></div>')
+            .join('');
+          formSection.hidden = true;
+          successSection.hidden = false;
+          successSection.focus?.();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch {
+          showBanner('ارتباط با سرور برقرار نشد. اینترنت خود را بررسی کنید و دوباره تلاش کنید.');
+          resetTurnstile();
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalLabel;
+        }
+      });
+
+      resetBtn.addEventListener('click', () => {
+        form.reset();
+        setContactError('');
+        showBanner('');
+        successSection.hidden = true;
+        formSection.hidden = false;
+        resetTurnstile();
+        contactInput.focus();
+      });
+    </script>
+  </body>
+</html>

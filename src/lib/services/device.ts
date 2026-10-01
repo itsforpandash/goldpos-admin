@@ -1,3 +1,5 @@
+import { DEVICE_HASH_ALPHABET, DEVICE_HASH_LENGTH, randomString } from "@/lib/codec/secure-random";
+
 export const DEVICE_QUERIES = {
   BASE_SELECT: `
     SELECT 
@@ -15,13 +17,24 @@ export const DEVICE_QUERIES = {
   UPDATE_DEVICE: `UPDATE devices SET status = ?, last_connected_at = CURRENT_TIMESTAMP, last_ip = ? WHERE id = ?`,
 };
 
+/**
+ * Generate a fallback device hash: 32 chars from a 55-symbol alphabet.
+ *
+ * Used only when the mobile app omits `deviceHash` in the request; it must stay
+ * a 32-char string because `devices.device_hash` is VARCHAR(64) and existing
+ * rows are 32 chars (migrations/0004_create_devices.sql:6).
+ *
+ * 32 chars x log2(55) = ~186 bits of entropy.
+ *
+ * Security: drawn from crypto.getRandomValues with rejection sampling. The old
+ * implementation used Math.random(), a non-cryptographic PRNG whose state is
+ * recoverable from observed output — a device hash gates how many activations a
+ * license can bind, so it must not be predictable. 55 does not divide 256, so
+ * naive `% 55` would over-favor the first 36 symbols; rejection sampling keeps
+ * every symbol exactly equiprobable (see ../codec/secure-random.ts).
+ */
 export function generateDeviceHash(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  let hash = "";
-  for (let i = 0; i < 32; i++) {
-    hash += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return hash;
+  return randomString(DEVICE_HASH_ALPHABET, DEVICE_HASH_LENGTH);
 }
 
 const processDeviceResults = (rows: any[]) => {

@@ -46,13 +46,55 @@ export async function hashPassword(password: string, saltB64?: string): Promise<
   return `pbkdf2$${PBKDF2_ITERATIONS}$${btoa(String.fromCharCode(...salt))}$${b64encode(bits)}`;
 }
 
+/**
+ * Constant-time byte comparison.
+ *
+ * Prefers `crypto.subtle.timingSafeEqual`, which Cloudflare Workers exposes. It is
+ * not part of the DOM `SubtleCrypto` type (hence the cast) and is absent in some
+ * runtimes (e.g. Node), so a manually accumulated XOR loop is used as a fallback —
+ * that loop is still constant-time with respect to the content of the inputs.
+ *
+ * The length check must happen before the comparison: timingSafeEqual throws on
+ * buffers of unequal length, and length is not treated as a secret.
+ */
+type TimingSafeSubtle = SubtleCrypto & {
+  timingSafeEqual?: (a: ArrayBufferView, b: ArrayBufferView) => boolean | Promise<boolean>;
+};
+
+async function safeCompare(a: string, b: string): Promise<boolean> {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const aBytes = new TextEncoder().encode(a);
+  const bBytes = new TextEncoder().encode(b);
+  if (aBytes.length !== bBytes.length) return false;
+
+  const timingSafeEqual = (crypto.subtle as TimingSafeSubtle).timingSafeEqual;
+  if (typeof timingSafeEqual === "function") {
+    return (await timingSafeEqual.call(crypto.subtle, aBytes, bBytes)) === true;
+  }
+
+  let diff = 0;
+  for (let i = 0; i < aBytes.length; i++) {
+    diff |= aBytes[i] ^ bBytes[i];
+  }
+  return diff === 0;
+}
+
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   try {
+    if (typeof stored !== "string" || stored.length === 0) return false;
     const parts = stored.split("$");
     if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
     const iterations = parseInt(parts[1], 10);
     const saltB64 = parts[2];
     const expectedHash = parts[3];
+
+    // Reject malformed stored hashes before deriving anything: a non-numeric
+    // iteration count, an empty salt/hash, or a non-base64 salt must not throw
+    // out of the PBKDF2 call.
+    if (!Number.isFinite(iterations) || iterations < 1 || iterations > 10_000_000) return false;
+    if (!saltB64 || !expectedHash) return false;
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(saltB64)) return false;
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(expectedHash)) return false;
 
     const salt = b64decode(saltB64);
 
@@ -76,7 +118,9 @@ export async function verifyPassword(password: string, stored: string): Promise<
     );
 
     const computed = b64encode(bits);
-    return computed === expectedHash;
+    // Constant-time compare (see safeCompare): a plain `===` on the derived hash
+    // leaks prefix-match timing information to an attacker probing the stored hash.
+    return await safeCompare(computed, expectedHash);
   } catch {
     return false;
   }

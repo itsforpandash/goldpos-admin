@@ -1,0 +1,376 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import Flash from '@/components/admin/flash.astro';
+import { SettingsService, SETTING_KEYS, maskSettingValue, isConfigured } from '@/lib/services/settings';
+import { fetchBotStatus } from '@/lib/bot-client';
+import { toPersianDigits, formatPersianDate, formatPersianTime } from '@/lib/i18n';
+
+const { DB } = Astro.locals.runtime.env;
+// The control client needs two vars the generated Env type does not declare yet.
+const env = Astro.locals.runtime.env as unknown as {
+  BOT_SETUP_TOKEN?: string;
+  BOT_WORKER_URL?: string;
+};
+
+const session = Astro.locals.SESSION;
+if (!session) return Astro.redirect('/admin/login');
+
+const settingsService = new SettingsService(DB);
+
+const ok = Astro.url.searchParams.get('ok');
+const err = Astro.url.searchParams.get('err');
+const errDetail = Astro.url.searchParams.get('msg');
+const pending = Astro.url.searchParams.get('pending');
+
+// Messages that need a specific wording (Flash only has a generic fallback).
+const queueNote = () =>
+  ` — ${toPersianDigits(Number(pending) || 0)} پیام در صف پردازش.`;
+
+const localOkMessages: Record<string, string> = {
+  username: 'نام کاربری به‌روزرسانی شد.',
+  password: 'رمز عبور تغییر کرد.',
+  token_saved: 'توکن ربات ذخیره شد.',
+  token_connected: `توکن ربات ذخیره و وب‌هوک ثبت شد.${queueNote()}`,
+  secret_rotated: 'کلید جدید وب‌هوک تولید و ذخیره شد.',
+  secret_connected: `کلید جدید ذخیره و وب‌هوک ثبت شد.${queueNote()}`,
+  connected: `وب‌هوک ثبت شد.${queueNote()}`,
+};
+
+const localErrMessages: Record<string, string> = {
+  fields: 'فیلدهای فرم را کامل و صحیح وارد کنید.',
+  weak: 'رمز عبور جدید باید حداقل ۸ کاراکتر باشد.',
+  confirm: 'تکرار رمز عبور جدید مطابقت ندارد.',
+  current: 'رمز عبور فعلی نادرست است.',
+  same_password: 'رمز عبور جدید نباید با رمز فعلی یکسان باشد.',
+  username_length: 'نام کاربری باید بین ۳ تا ۶۴ کاراکتر باشد.',
+  username_charset: 'نام کاربری نباید شامل فاصله باشد.',
+  username_taken: 'این نام کاربری قبلاً استفاده شده است.',
+  rate_limit: 'تعداد تلاش‌ها زیاد است؛ کمی بعد دوباره امتحان کنید.',
+  need_settings: 'ابتدا توکن ربات و کلید وب‌هوک را ذخیره کنید.',
+  connect: 'اتصال وب‌هوک ناموفق بود.',
+  save_connect_failed: 'ذخیره شد، اما ثبت وب‌هوک ناموفق بود.',
+  not_found: 'حساب کاربری پیدا نشد.',
+};
+
+// Route anything Flash cannot word well to our own banner; reuse Flash otherwise.
+const flashOk = ok && !localOkMessages[ok] ? ok : null;
+const flashErr = err && !errDetail && !localErrMessages[err] ? err : null;
+const localOk = ok ? localOkMessages[ok] || null : null;
+const localErr = err ? errDetail || localErrMessages[err] || null : null;
+
+// Read the two write-only settings once, derive ONLY a mask + a boolean, and
+// never touch the raw values again: the template below cannot render them.
+const rawToken = await settingsService.get(SETTING_KEYS.BOT_TOKEN);
+const rawSecret = await settingsService.get(SETTING_KEYS.BOT_WEBHOOK_SECRET);
+const bot = {
+  tokenSet: isConfigured(rawToken),
+  tokenMasked: maskSettingValue(rawToken),
+  secretSet: isConfigured(rawSecret),
+  secretMasked: maskSettingValue(rawSecret),
+};
+
+const [status, adminRow, metaResult] = await Promise.all([
+  fetchBotStatus(env),
+  DB.prepare(
+    `SELECT username, full_name, role, must_change_password FROM admin_users WHERE id = ?`,
+  )
+    .bind(session.id)
+    .first<{ username: string; full_name: string; role: string; must_change_password?: number | boolean }>(),
+  DB.prepare(`SELECT key, updated_at, updated_by FROM settings WHERE key IN (?, ?)`)
+    .bind(SETTING_KEYS.BOT_TOKEN, SETTING_KEYS.BOT_WEBHOOK_SECRET)
+    .all<{ key: string; updated_at: string | null; updated_by: number | null }>(),
+]);
+
+const settingsMeta: Record<string, { updatedAt: string | null; updatedBy: number | null }> = {};
+for (const row of metaResult.results) {
+  settingsMeta[row.key] = { updatedAt: row.updated_at, updatedBy: row.updated_by };
+}
+
+const mustChange = !!adminRow?.must_change_password;
+
+const okBadge = 'rounded-full bg-green-100 px-2 py-1 text-xs text-green-800 dark:bg-green-900/30 dark:text-green-300';
+const badBadge = 'rounded-full bg-red-100 px-2 py-1 text-xs text-red-800 dark:bg-red-900/30 dark:text-red-300';
+const neutralBadge = 'rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+const fieldLabel = 'mb-1 block text-xs text-muted-foreground';
+const fieldInput = 'w-full rounded-md border border-border bg-background px-3 py-2 text-sm';
+const primaryBtn =
+  'inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors';
+const secondaryBtn =
+  'inline-flex items-center rounded-md border border-border px-4 py-2 text-sm hover:bg-muted transition-colors';
+---
+
+<Layout title="تنظیمات">
+  <Flash ok={flashOk} err={flashErr} />
+
+  {localOk && (
+    <div class="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-300" role="alert">
+      {localOk}
+    </div>
+  )}
+
+  {localErr && (
+    <div class="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300" role="alert">
+      {localErr}
+    </div>
+  )}
+
+  {mustChange && (
+    <div class="mb-6 rounded-md border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-900 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-200" role="alert">
+      رمز عبور هنوز در مرحلهٔ اولیه است؛ تا زمانی که آن را عوض نکنید حساب شما آسیب‌پذیر است.
+      همین بخش «حساب کاربری» همین حالا این کار را انجام می‌دهد.
+    </div>
+  )}
+
+  <!-- ─── a. حساب کاربری ─────────────────────────────────────────────────── -->
+  <section class="kpi-card mb-6">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <h2 class="text-lg font-bold">حساب کاربری</h2>
+      <span class={neutralBadge}>{adminRow?.role || '—'}</span>
+    </div>
+
+    <form method="post" action="/admin/settings/action" class="mb-6 border-b border-border pb-6">
+      <input type="hidden" name="action" value="username" />
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class={fieldLabel} for="username">نام کاربری *</label>
+          <input
+            id="username"
+            name="username"
+            type="text"
+            required
+            minlength="3"
+            maxlength="64"
+            value={adminRow?.username || session.username}
+            dir="ltr"
+            autocomplete="username"
+            class={fieldInput}
+          />
+          <p class="mt-1 text-[11px] text-muted-foreground">
+            بین ۳ تا ۶۴ کاراکتر، بدون فاصله و یکتا در سیستم.
+          </p>
+        </div>
+        <div class="flex items-end">
+          <button type="submit" class={primaryBtn}>ذخیرهٔ نام کاربری</button>
+        </div>
+      </div>
+    </form>
+
+    <form method="post" action="/admin/settings/action">
+      <input type="hidden" name="action" value="password" />
+      <div class="grid gap-4 sm:grid-cols-3">
+        <div>
+          <label class={fieldLabel} for="current_password">رمز عبور فعلی *</label>
+          <input
+            id="current_password"
+            name="current_password"
+            type="password"
+            required
+            autocomplete="current-password"
+            class={fieldInput}
+          />
+        </div>
+        <div>
+          <label class={fieldLabel} for="new_password">رمز عبور جدید *</label>
+          <input
+            id="new_password"
+            name="new_password"
+            type="password"
+            required
+            minlength="8"
+            autocomplete="new-password"
+            class={fieldInput}
+          />
+        </div>
+        <div>
+          <label class={fieldLabel} for="confirm_password">تکرار رمز جدید *</label>
+          <input
+            id="confirm_password"
+            name="confirm_password"
+            type="password"
+            required
+            minlength="8"
+            autocomplete="new-password"
+            class={fieldInput}
+          />
+        </div>
+      </div>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <button type="submit" class={primaryBtn}>تغییر رمز عبور</button>
+        <span class="text-xs text-muted-foreground">
+          حداقل ۸ کاراکتر؛ رمز جدید نمی‌تواند با رمز فعلی یکسان باشد.
+        </span>
+      </div>
+    </form>
+  </section>
+
+  <!-- ─── b. ربات تلگرام ─────────────────────────────────────────────────── -->
+  <section class="kpi-card mb-6">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <h2 class="text-lg font-bold">ربات تلگرام</h2>
+      <a href="/admin/bot" class={secondaryBtn}>مدیران ربات</a>
+    </div>
+
+    <p class="mb-4 text-xs text-muted-foreground">
+      توکن و کلید وب‌هوک فقط‌نوشتنی‌اند: مقدار ذخیره‌شده هرگز به این صفحه برنمی‌گردد و
+      همیشه پنهان می‌ماند.
+    </p>
+
+    <div class="mb-6 grid gap-3 sm:grid-cols-2">
+      <div class="rounded-md border border-border p-3">
+        <dt class="text-xs text-muted-foreground">توکن ربات (در پنل)</dt>
+        <dd class="mt-1 flex flex-wrap items-center gap-2 text-sm font-medium">
+          <span class={bot.tokenSet ? okBadge : badBadge}>
+            {bot.tokenSet ? 'تنظیم شده' : 'تنظیم نشده'}
+          </span>
+          <span class="font-mono text-xs" dir="ltr">{bot.tokenMasked}</span>
+        </dd>
+        {settingsMeta[SETTING_KEYS.BOT_TOKEN]?.updatedAt && (
+          <div class="mt-2 text-[11px] text-muted-foreground">
+            آخرین به‌روزرسانی: {formatPersianDate(settingsMeta[SETTING_KEYS.BOT_TOKEN].updatedAt)}
+            {' — '}{formatPersianTime(settingsMeta[SETTING_KEYS.BOT_TOKEN].updatedAt)}
+          </div>
+        )}
+      </div>
+
+      <div class="rounded-md border border-border p-3">
+        <dt class="text-xs text-muted-foreground">کلید تأیید وب‌هوک (در پنل)</dt>
+        <dd class="mt-1 flex flex-wrap items-center gap-2 text-sm font-medium">
+          <span class={bot.secretSet ? okBadge : badBadge}>
+            {bot.secretSet ? 'تنظیم شده' : 'تنظیم نشده'}
+          </span>
+          <span class="font-mono text-xs" dir="ltr">{bot.secretMasked}</span>
+        </dd>
+        {settingsMeta[SETTING_KEYS.BOT_WEBHOOK_SECRET]?.updatedAt && (
+          <div class="mt-2 text-[11px] text-muted-foreground">
+            آخرین به‌روزرسانی: {formatPersianDate(settingsMeta[SETTING_KEYS.BOT_WEBHOOK_SECRET].updatedAt)}
+            {' — '}{formatPersianTime(settingsMeta[SETTING_KEYS.BOT_WEBHOOK_SECRET].updatedAt)}
+          </div>
+        )}
+      </div>
+    </div>
+
+    <form method="post" action="/admin/settings/action" class="mb-6 border-b border-border pb-6">
+      <input type="hidden" name="action" value="bot_token" />
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class={fieldLabel} for="bot_token">توکن ربات</label>
+          <input
+            id="bot_token"
+            name="bot_token"
+            type="password"
+            autocomplete="new-password"
+            placeholder="…"
+            dir="ltr"
+            maxlength="512"
+            class={fieldInput}
+          />
+          <p class="mt-1 text-[11px] text-muted-foreground">
+            خالی بگذارید تا مقدار فعلی حفظ شود. مقدار ذخیره‌شده هرگز نمایش داده نمی‌شود.
+          </p>
+        </div>
+        <div class="flex items-end gap-3">
+          <button type="submit" class={primaryBtn}>ذخیرهٔ توکن</button>
+        </div>
+      </div>
+    </form>
+
+    <div class="mb-6 border-b border-border pb-6">
+      <div class="flex flex-wrap items-end gap-3">
+        <form method="post" action="/admin/settings/action">
+          <input type="hidden" name="action" value="rotate_secret" />
+          <button
+            type="submit"
+            class={secondaryBtn}
+            onclick="return confirm('کلید جدید وب‌هوک تولید شود؟ کلید قبلی باطل و ربات باید دوباره متصل شود.')"
+          >
+            تولید کلید جدید
+          </button>
+        </form>
+        <form method="post" action="/admin/settings/action">
+          <input type="hidden" name="action" value="connect" />
+          <button type="submit" class={primaryBtn}>اتصال وب‌هوک</button>
+        </form>
+      </div>
+      <p class="mt-2 text-xs text-muted-foreground">
+        کلید وب‌هوک به‌صورت سروری و تصادفی (۶۴ کاراکتر هگز) ساخته می‌شود و دیگر قابل بازخوانی نیست.
+        با ذخیرهٔ هر دو مقدار، وب‌هوک خودکار ثبت می‌شود.
+      </p>
+    </div>
+
+    <h3 class="mb-3 text-sm font-bold">وضعیت زنده</h3>
+
+    {status.error && (
+      <p class="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300" role="alert">
+        {status.error}
+      </p>
+    )}
+
+    <dl class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="rounded-md border border-border p-3">
+        <dt class="text-xs text-muted-foreground">ارتباط با ورکر ربات</dt>
+        <dd class="mt-1 text-sm font-medium">
+          <span class={status.reachable ? okBadge : badBadge}>
+            {status.reachable ? 'برقرار' : 'برقرار نیست'}
+          </span>
+        </dd>
+      </div>
+
+      <div class="rounded-md border border-border p-3">
+        <dt class="text-xs text-muted-foreground">توکن ربات (در ورکر)</dt>
+        <dd class="mt-1 text-sm font-medium">
+          <span class={status.botTokenConfigured ? okBadge : badBadge}>
+            {status.botTokenConfigured ? 'تنظیم شده' : 'تنظیم نشده'}
+          </span>
+        </dd>
+      </div>
+
+      <div class="rounded-md border border-border p-3">
+        <dt class="text-xs text-muted-foreground">کلید وب‌هوک (در ورکر)</dt>
+        <dd class="mt-1 text-sm font-medium">
+          <span class={status.webhookSecretConfigured ? okBadge : badBadge}>
+            {status.webhookSecretConfigured ? 'تنظیم شده' : 'تنظیم نشده'}
+          </span>
+        </dd>
+      </div>
+
+      <div class="rounded-md border border-border p-3">
+        <dt class="text-xs text-muted-foreground">مدیران فعال ربات</dt>
+        <dd class="mt-1 text-sm font-medium">
+          <span class={status.activeAdmins === null ? neutralBadge : okBadge}>
+            {status.activeAdmins === null ? 'نامعلوم' : toPersianDigits(status.activeAdmins)}
+          </span>
+        </dd>
+      </div>
+
+      <div class="rounded-md border border-border p-3 sm:col-span-2 lg:col-span-3">
+        <dt class="text-xs text-muted-foreground">وضعیت وب‌هوک</dt>
+        <dd class="mt-1 text-sm">
+          {status.webhook?.url ? (
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class={okBadge}>ثبت شده</span>
+                <span class="font-mono text-xs" dir="ltr">{status.webhook.url}</span>
+              </div>
+              <div class="mt-2 text-xs text-muted-foreground">
+                پیام‌های در انتظار پردازش: {toPersianDigits(status.webhook.pendingUpdates)}
+              </div>
+              {status.webhook.lastError && (
+                <div class="mt-1 text-xs text-red-600 dark:text-red-400">
+                  آخرین خطا: <span dir="ltr">{status.webhook.lastError}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <span>وب‌هوک ثبت نشده</span>
+          )}
+        </dd>
+      </div>
+    </dl>
+  </section>
+
+  <p class="text-xs text-muted-foreground">
+    تغییرات این صفحه در گزارش فعالیت ثبت می‌شوند؛ مقادیر محرمانه (توکن، رمز، کلید) هرگز در
+    گزارش یا نشانی اینترنتی ذخیره نمی‌شوند. برای شناسه‌های چت تلگرام به
+    <a href="/admin/bot" class="text-primary underline underline-offset-2">مدیران ربات</a> بروید.
+  </p>
+</Layout>

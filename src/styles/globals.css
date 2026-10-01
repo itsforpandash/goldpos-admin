@@ -1,7 +1,34 @@
-@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Regular.woff2') format('woff2');
-@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Bold.woff2') format('woff2');
-@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Medium.woff2') format('woff2');
-@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Light.woff2') format('woff2');
+/* Vazirmatn. NOTE: these used to be `@import url(...) format('woff2')`,
+   which is invalid CSS (format() is only legal in @font-face src) so every
+   browser silently dropped them and the Persian UI never got Vazirmatn. */
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Light.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 @tailwind base;
 @tailwind components;
@@ -78,12 +105,68 @@
 
 @layer components {
   .kpi-card {
-    @apply bg-card rounded-xl border border-border p-6 shadow-sm;
+    @apply bg-card rounded-xl border border-border p-4 sm:p-6 shadow-sm;
   }
   .kpi-value {
     @apply text-3xl font-bold tracking-tight;
   }
   .kpi-label {
     @apply text-sm text-muted-foreground mt-1;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Mobile shell
+   The drawer is anchored to the physical right edge (RTL start side), so the
+   closed state must translate it to the RIGHT (translateX(100%)) — using
+   -translate-x-full here left part of it floating over the page on tablets.
+   --------------------------------------------------------------------------- */
+#mobile-sidebar {
+  transform: translateX(100%);
+  overscroll-behavior: contain;
+}
+#mobile-sidebar.is-open {
+  transform: translateX(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  #mobile-sidebar {
+    transition: none;
+  }
+}
+
+/* Horizontally scrollable data tables (RTL-safe, momentum scrolling) */
+.table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+.table-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.table-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 999px;
+}
+.table-scroll table {
+  margin-inline: 0;
+}
+
+/* Comfortable touch targets + 16px form fields on phones (16px stops the
+   iOS Safari zoom-on-focus). Deliberately !important so it wins over
+   text-sm / py-1 utility classes regardless of layer order. */
+@media (max-width: 640px) {
+  input:not([type='hidden']),
+  select,
+  textarea {
+    font-size: 16px !important;
+    min-height: 44px !important;
+  }
+  button {
+    min-height: 44px !important;
   }
 }

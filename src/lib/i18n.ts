@@ -21,9 +21,12 @@ export function gregorianToJalali(date: Date): { year: number; month: number; da
   const gm = date.getMonth() + 1;
   const gd = date.getDate();
 
+  // Standard jalali epoch algorithm: shift the year to a 621/1600-based offset,
+  // accumulate days, then convert. jy accumulates the real Jalali year directly —
+  // do NOT add 621/1600 again on return (that double-adds and yields e.g. 3005).
   const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-  let jy = gy <= 1600 ? 0 : 979;
-  let gyAdj = gy - (gy <= 1600 ? 621 : 1600);
+  const gyAdj = gy > 1600 ? gy - 1600 : gy - 621;
+  let jy = gy > 1600 ? 979 : 0;
   const gy2 = gm > 2 ? gyAdj + 1 : gyAdj;
   let days = 365 * gyAdj + Math.floor((gy2 + 3) / 4) - Math.floor((gy2 + 99) / 100)
     + Math.floor((gy2 + 399) / 400) - 80 + gd + g_d_m[gm - 1];
@@ -38,7 +41,7 @@ export function gregorianToJalali(date: Date): { year: number; month: number; da
   const jm = days < 186 ? 1 + Math.floor(days / 31) : 7 + Math.floor((days - 186) / 30);
   const jd = (days < 186 ? days % 31 : (days - 186) % 30) + 1;
 
-  return { year: jy + (gy <= 1600 ? 621 : 1600), month: jm, day: jd };
+  return { year: jy, month: jm, day: jd };
 }
 
 export function formatPersianDate(dateInput?: string | number | Date | null): string {

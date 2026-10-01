@@ -1,3 +1,5 @@
+import { CROCKFORD_BASE32_ALPHABET, LICENSE_CODE_PAYLOAD_LENGTH, groupCode, randomString } from "@/lib/codec/secure-random";
+
 export const LICENSE_QUERIES = {
   BASE_SELECT: `
     SELECT 
@@ -19,22 +21,67 @@ const processLicenseResults = (rows: any[]) => {
   return rows.map((row) => ({ ...row }));
 };
 
+/**
+ * Device/fallback alphabet for generated license bodies: Crockford Base32.
+ * See ../codec/secure-random.ts for the alphabet and its justification.
+ */
+const CODE_ALPHABET = CROCKFORD_BASE32_ALPHABET;
+
+/**
+ * Generate one license code in the NEW format:
+ *   GPOS-XXXX-XXXX-XXXX-XXXX   (prefix + 16 Crockford chars in 4 groups)
+ *
+ * Entropy: 16 chars x 5 bits = 80 bits (the "GPOS-" prefix and the "-"
+ * separators are display formatting only and contribute no entropy).
+ *
+ * Drawn from crypto.getRandomValues with rejection sampling — Math.random()
+ * is a non-cryptographic PRNG whose state is predictable from observed output,
+ * which would let an attacker forecast future license codes.
+ *
+ * NOTE: this returns a CODE IN THE NEW FORMAT ONLY. Legacy licenses already in
+ * the database use the old 7-char body ("GPOS-ABC-DE7") and are untouched —
+ * lookup by code is a plain equality match and never reformats or rejects them.
+ */
 function generateLicenseCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 7; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-    if (i === 2 || i === 5) code += "-";
-  }
-  return `${LICENSE_QUERIES.GENERATE_CODE_PREFIX}${code}`;
+  const payload = randomString(CODE_ALPHABET, LICENSE_CODE_PAYLOAD_LENGTH);
+  return `${LICENSE_QUERIES.GENERATE_CODE_PREFIX}${groupCode(payload)}`;
 }
 
-export function generateUniqueLicenseCodes(count: number): string[] {
+/**
+ * Generate `count` license codes.
+ *
+ * Uniqueness is enforced within this batch via a Set. The optional
+ * `isTaken(code)` predicate additionally screens against codes that already
+ * exist elsewhere (e.g. rows already in the database) and redraws on a hit.
+ * The predicate MUST be synchronous — the exported signature is sync and is
+ * relied on by callers that must keep working; callers screen against the DB by
+ * pre-loading the existing codes into a Set:
+ *
+ *   const taken = new Set(existingCodes);
+ *   generateUniqueLicenseCodes(50, (c) => taken.has(c));
+ *
+ * With 80 bits of entropy a collision with a stored code is effectively
+ * impossible, but the hook lets a caller detect and report one instead of
+ * letting the INSERT fail silently.
+ *
+ * Backward compatible: `generateUniqueLicenseCodes(count)` keeps working.
+ */
+export function generateUniqueLicenseCodes(count: number, isTaken?: (code: string) => boolean): string[] {
   const codes: string[] = [];
   const used = new Set<string>();
   for (let i = 0; i < count; i++) {
     let code = generateLicenseCode();
-    while (used.has(code)) {
+    // Redraw on an in-batch collision or, if provided, a hit from the
+    // external source. The retry budget is generous so a pathological
+    // `isTaken` (e.g. one that always returns true) fails loudly rather than
+    // spinning forever.
+    let attempts = 0;
+    while (used.has(code) || (isTaken?.(code) ?? false)) {
+      if (++attempts > 1000) {
+        throw new Error(
+          `generateUniqueLicenseCodes: could not generate a unique code for item ${i + 1}/${count} after ${attempts} attempts`,
+        );
+      }
       code = generateLicenseCode();
     }
     used.add(code);
